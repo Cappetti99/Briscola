@@ -1,0 +1,8 @@
+__pycache__/
+*.py[cod]
+.DS_Store
+
+# Local match records, when redirected into the project folder.
+records.json
+records.txt
+records.json.tmp
