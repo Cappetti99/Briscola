@@ -71,6 +71,7 @@ class BriscolaApp(tk.Tk):
         self.selected: set[int] = set()
         self.hovered: int | None = None
         self.sort_mode = "suit"
+        self.hand_first = 0
 
         self.game: Game | None = None
         self.state = S_MENU
@@ -98,6 +99,7 @@ class BriscolaApp(tk.Tk):
         self.canvas.bind("<Button-1>", self._on_canvas_click, add="+")
         self.canvas.bind("<Motion>", self._on_motion, add="+")
         self.canvas.bind("<Leave>", self._on_canvas_leave, add="+")
+        self.canvas.bind("<MouseWheel>", self._on_wheel, add="+")
         self.show_menu()
 
     # --- menu -------------------------------------------------------------
@@ -126,6 +128,7 @@ class BriscolaApp(tk.Tk):
         if self.game_kind == ui.BURRACO:
             self.game = burraco_engine.Game(first_player=self.next_leader)
             self.hovered = None
+            self.hand_first = 0
             self.game.sort_hand(HUMAN, self.sort_mode)
             self.next_leader = 1 - self.next_leader
             who = ("you start" if self.game.turn == HUMAN
@@ -456,6 +459,12 @@ class BriscolaApp(tk.Tk):
             burraco_view.on_motion(self, event.x, event.y)
             return
         self._set_hover_index(self._hand_slot_at(event.x, event.y))
+
+    def _on_wheel(self, event):
+        """The wheel walks along a Burraco hand too wide to show at once."""
+        if self.game_kind != ui.BURRACO or self.state != S_HUMAN:
+            return
+        burraco_view.scroll_hand(self, -1 if event.delta > 0 else 1)
 
     def _on_canvas_leave(self, _event=None):
         self._set_hover_index(None)

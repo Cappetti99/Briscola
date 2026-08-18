@@ -69,25 +69,78 @@ def test_the_two_table_slots_do_not_overlap():
 # --- Burraco --------------------------------------------------------------
 
 def test_a_burraco_fan_is_centred_and_overlaps():
-    for count in (1, 3, 11, 22):
+    for count in (1, 3, 11, 22, 28):
+        shown = burraco.visible_slots(count)
         left = burraco.hand_x(count, 0)
-        right = burraco.hand_x(count, count - 1) + burraco.HAND_W
+        right = burraco.hand_x(count, shown - 1) + burraco.HAND_W
         assert abs((left + right) / 2 - burraco.CENTER_X) < 0.5, count
-    assert burraco.HAND_STEP < burraco.HAND_W, "the fan is meant to overlap"
+    assert burraco.hand_step(11) < burraco.HAND_W, "the fan is meant to overlap"
+
+
+def test_a_big_hand_never_runs_off_the_table():
+    """Eleven cards plus a pot plus a pile is a wide hand.
+
+    At a fixed step it went off both edges — seventeen cards spanned 1010
+    pixels of a 940 pixel table — and the cards on the ends could be neither
+    seen nor clicked.
+    """
+    for count in range(1, 41):
+        shown = burraco.visible_slots(count)
+        left = burraco.hand_x(count, 0)
+        right = burraco.hand_x(count, shown - 1) + burraco.HAND_W
+        assert left >= 0, f"{count} cards start off the table at {left}"
+        assert right <= TABLE_W, f"{count} cards end off the table at {right}"
+
+
+def test_the_fan_tightens_before_it_scrolls():
+    assert burraco.hand_step(11) == burraco.HAND_STEP_MAX, "a small hand is airy"
+    assert burraco.hand_step(22) < burraco.HAND_STEP_MAX, "a big one tightens"
+    assert burraco.hand_step(40) == burraco.HAND_STEP_MIN, "down to the floor"
+    assert burraco.visible_slots(22) == 22, "and only then does it scroll"
+    assert burraco.visible_slots(40) < 40
 
 
 def test_the_pointer_finds_each_card_of_a_full_burraco_hand():
     """Every card must be reachable, including under the overlap."""
-    for count in (1, 3, 11, 22):
-        for index in range(count):
+    for count in (1, 3, 11, 22, 28):
+        step = burraco.hand_step(count)
+        for index in range(burraco.visible_slots(count)):
             # The visible strip of a card is one step wide, except the last.
-            spot = burraco.hand_x(count, index) + burraco.HAND_STEP / 2
+            spot = burraco.hand_x(count, index) + step / 2
             found = burraco.hand_slot_at(spot, burraco.HAND_Y + 40, count)
             assert found == index, (count, index, found)
 
 
+def test_scrolling_walks_the_whole_hand():
+    count = 40
+    shown = burraco.visible_slots(count)
+    step = burraco.hand_step(count)
+    reachable = set()
+    for first in range(0, count - shown + 1):
+        for index in burraco.visible_range(count, first):
+            spot = burraco.hand_x(count, index, first) + step / 2
+            found = burraco.hand_slot_at(spot, burraco.HAND_Y + 40, count, first)
+            assert found == index, (first, index, found)
+            reachable.add(index)
+    assert reachable == set(range(count)), "every card can be scrolled to"
+
+
+def test_the_scroll_window_stays_inside_the_hand():
+    count = 40
+    shown = burraco.visible_slots(count)
+    assert burraco.clamp_scroll(count, -5) == 0
+    assert burraco.clamp_scroll(count, 999) == count - shown
+    assert burraco.clamp_scroll(11, 5) == 0, "a hand that fits never scrolls"
+    assert list(burraco.visible_range(11, 3)) == list(range(11))
+
+
+def test_a_scrolled_card_has_no_place_on_screen():
+    assert burraco.hand_x(40, 39, first=0) is None
+    assert burraco.hand_x(40, 0, first=10) is None
+
+
 def test_the_burraco_hit_test_ignores_the_lift():
-    spot = burraco.hand_x(11, 4) + burraco.HAND_STEP / 2
+    spot = burraco.hand_x(11, 4) + burraco.hand_step(11) / 2
     for offset in (0, 4, burraco.HAND_H - 1, -burraco.LIFT + 1):
         assert burraco.hand_slot_at(spot, burraco.HAND_Y + offset, 11) == 4
 
@@ -149,6 +202,7 @@ def test_cards_in_a_meld_step_the_right_way():
 def test_a_meld_shows_enough_of_each_card_to_read_it():
     assert burraco.MELD_VSTEP >= 14, "a run must show its corner index"
     assert burraco.MELD_STEP >= 18, "and a set must show its rank"
+    assert burraco.HAND_STEP_MIN >= 28, "a hand card must stay clickable"
 
 
 if __name__ == "__main__":

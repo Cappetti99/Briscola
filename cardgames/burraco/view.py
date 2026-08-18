@@ -6,17 +6,17 @@ Briscola and Burraco share one window, one menu and one record file.
 
 from .. import cardart
 from ..cards import Card
-from ..ui import (ACCENT, CONTENT_W, CONTENT_X, FELT, FELT_DARK, FELT_EDGE,
-                  PANEL_BG, PANEL_CARD, TABLE_H, TABLE_W, TEXT, TEXT_DIM)
+from ..ui import (ACCENT, CONTENT_W, CONTENT_X, FELT, FELT_EDGE, PANEL_BG,
+                  PANEL_CARD, TABLE_H, TABLE_W, TEXT, TEXT_DIM)
 from . import ai as burraco_ai
 from .engine import (AI, HUMAN, InvalidMeld, Stranded, is_wild,
                      wild_stands_for)
 
-from .layout import (BACK_H, BACK_STEP, BACK_W, CENTER_X, HAND_H, HAND_STEP,
-                     HAND_W, HAND_Y, HOVER_LIFT, LIFT, MELD_H, MELD_W,
-                     MELD_X0, OPP_HAND_Y, OPP_MELD_Y, PILE_X, STOCK_X,
-                     STOCK_Y, YOUR_MELD_Y, card_position, hand_slot_at,
-                     hand_x, meld_boxes)
+from .layout import (BACK_H, BACK_STEP, BACK_W, CENTER_X, HAND_H, HAND_W,
+                     HAND_Y, HOVER_LIFT, LIFT, MELD_H, MELD_W, MELD_X0,
+                     OPP_HAND_Y, OPP_MELD_Y, PILE_X, STOCK_X, STOCK_Y,
+                     YOUR_MELD_Y, card_position, clamp_scroll, hand_slot_at,
+                     hand_x, meld_boxes, visible_range, visible_slots)
 
 ACTIONS = ("draw", "pile", "meld", "swap", "discard", "end")
 SORTS = ("suit", "rank")
@@ -118,8 +118,12 @@ def _draw_melds(app, game, player, top):
 def _draw_hand(app, game):
     canvas = app.canvas
     hand = game.hands[HUMAN]
-    for index, card in enumerate(hand):
-        x = hand_x(len(hand), index)
+    count = len(hand)
+    app.hand_first = clamp_scroll(count, app.hand_first)
+
+    for index in visible_range(count, app.hand_first):
+        x = hand_x(count, index, app.hand_first)
+        card = hand[index]
         y = HAND_Y - (LIFT if index in app.selected
                       else HOVER_LIFT if index == app.hovered else 0)
         tag = f"hand{index}"
@@ -127,28 +131,38 @@ def _draw_hand(app, game):
                           highlight=index in app.selected)
         canvas.tag_bind(tag, "<Button-1>",
                         lambda _e, i=index: click_card(app, i))
-    canvas.create_text(TABLE_W - 12, HAND_Y + HAND_H / 2,
-                       text=f"YOU  {len(hand)} cards", anchor="e",
+
+    if visible_slots(count) < count:
+        _draw_scroll_arrows(app, count)
+
+    canvas.create_text(TABLE_W - 12, HAND_Y - 14,
+                       text=f"YOU  {count} cards", anchor="e",
                        fill=FELT_EDGE, font=("Helvetica", 10, "bold"))
 
 
-def pointed_card(app, x, y):
-    """The card under the pointer, once the window agrees we may pick one."""
-    game = app.game
-    if not game or app.overlay is not None or game.turn != HUMAN:
-        return None
-    return hand_slot_at(x, y, len(game.hands[HUMAN]))
-
-
-def on_motion(app, x, y):
-    index = pointed_card(app, x, y)
-    if index == app.hovered:
-        return
-    for slot, lift in ((app.hovered, HOVER_LIFT), (index, -HOVER_LIFT)):
-        if slot is not None and slot not in app.selected:
-            app.canvas.move(f"hand{slot}", 0, lift)
-    app.hovered = index
-    app.canvas.config(cursor="hand2" if index is not None else "")
+def _draw_scroll_arrows(app, count):
+    """Only drawn when the hand is too wide to show at once."""
+    canvas = app.canvas
+    shown = visible_slots(count)
+    middle = HAND_Y + HAND_H / 2
+    for key, x, direction in (("left", 16, -1), ("right", TABLE_W - 46, 1)):
+        first = app.hand_first
+        spent = (direction < 0 and first == 0) or \
+                (direction > 0 and first + shown >= count)
+        colour = FELT_EDGE if spent else ACCENT
+        tag = f"scroll_{key}"
+        tip = x if direction < 0 else x + 30
+        back = x + 30 if direction < 0 else x
+        canvas.create_polygon(tip, middle, back, middle - 22, back, middle + 22,
+                              fill=colour, outline=colour, tags=(tag,))
+        if not spent:
+            canvas.tag_bind(tag, "<Button-1>",
+                            lambda _e, d=direction: scroll_hand(app, d * 3))
+    canvas.create_text(CENTER_X, HAND_Y + HAND_H + 14,
+                       text=f"cards {app.hand_first + 1}-"
+                            f"{app.hand_first + shown} of {count}"
+                            "   -   drag the wheel or the arrows",
+                       fill=TEXT_DIM, font=("Helvetica", 10))
 
 
 def sort_hand(app, by):
@@ -157,6 +171,16 @@ def sort_hand(app, by):
     app.game.sort_hand(HUMAN, by)
     app.selected.clear()
     app.hovered = None
+    app.hand_first = 0
+
+
+def scroll_hand(app, by):
+    count = len(app.game.hands[HUMAN])
+    moved = clamp_scroll(count, app.hand_first + by)
+    if moved != app.hand_first:
+        app.hand_first = moved
+        app.hovered = None
+        app.render()
 
 
 def draw_panel(app):

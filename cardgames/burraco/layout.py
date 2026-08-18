@@ -7,7 +7,13 @@ row of melds of differing shapes, so the sums are worth checking on their own.
 from ..ui import TABLE_W
 
 HAND_W, HAND_H = 82, 124
-HAND_STEP = 58
+
+# The fan tightens as the hand grows, down to a floor that still leaves a
+# strip wide enough to read a card's corner and to click it. Past the point
+# where even that floor no longer fits the table, the hand scrolls.
+HAND_MARGIN = 24
+HAND_STEP_MAX = 58
+HAND_STEP_MIN = 30
 LIFT = 20
 HOVER_LIFT = 10
 MELD_W, MELD_H = 48, 72
@@ -29,27 +35,70 @@ PILE_X = STOCK_X + 104
 RUN = "run"
 
 
-def hand_x(count: int, index: int) -> float:
-    """Left edge of a card in the fan. Cards overlap, so the step is small."""
-    total = (count - 1) * HAND_STEP + HAND_W
-    return CENTER_X - total / 2 + index * HAND_STEP
+def _room() -> float:
+    """Table width a fan may use, once one whole card is allowed for."""
+    return TABLE_W - 2 * HAND_MARGIN - HAND_W
 
 
-def hand_slot_at(x: float, y: float, count: int) -> int | None:
+def visible_slots(count: int) -> int:
+    """How many cards can be on screen at once."""
+    if count <= 1:
+        return max(count, 0)
+    return min(count, int(_room() // HAND_STEP_MIN) + 1)
+
+
+def hand_step(count: int) -> float:
+    """Gap between card left edges: as wide as the table allows."""
+    shown = visible_slots(count)
+    if shown <= 1:
+        return HAND_STEP_MAX
+    return max(HAND_STEP_MIN, min(HAND_STEP_MAX, _room() / (shown - 1)))
+
+
+def clamp_scroll(count: int, first: int) -> int:
+    """Keep the window of visible cards inside the hand."""
+    return max(0, min(int(first), count - visible_slots(count)))
+
+
+def visible_range(count: int, first: int = 0) -> range:
+    first = clamp_scroll(count, first)
+    return range(first, first + visible_slots(count))
+
+
+def hand_x(count: int, index: int, first: int = 0) -> float | None:
+    """Left edge of a card, or None when it is scrolled out of sight.
+
+    `index` counts into the whole hand, not into what is on screen, so a
+    selection survives scrolling.
+    """
+    shown = visible_slots(count)
+    first = clamp_scroll(count, first)
+    if not first <= index < first + shown:
+        return None
+    step = hand_step(count)
+    total = (shown - 1) * step + HAND_W
+    return CENTER_X - total / 2 + (index - first) * step
+
+
+def hand_slot_at(x: float, y: float, count: int,
+                 first: int = 0) -> int | None:
     """Which card the pointer is over, from the fan's fixed geometry.
 
-    Only the last card shows its whole width; the others show one step of it,
-    which is the strip a click has to land in.
+    Only the last visible card shows its whole width; the others show one
+    step of it, which is the strip a click has to land in.
     """
     if count <= 0:
         return None
     if not HAND_Y - LIFT <= y <= HAND_Y + HAND_H:
         return None
-    total = (count - 1) * HAND_STEP + HAND_W
+    shown = visible_slots(count)
+    first = clamp_scroll(count, first)
+    step = hand_step(count)
+    total = (shown - 1) * step + HAND_W
     start = CENTER_X - total / 2
     if not start <= x <= start + total:
         return None
-    return min(int((x - start) // HAND_STEP), count - 1)
+    return first + min(int((x - start) // step), shown - 1)
 
 
 def meld_boxes(kinds: list[str], sizes: list[int], top: float) -> list[tuple]:
