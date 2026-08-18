@@ -10,7 +10,8 @@ from cardgames.burraco.engine import (AI, BURRACO_CLEAN, BURRACO_DIRTY,
                                       CARD_POINTS, CLOSING_BONUS, HAND_SIZE,
                                       HUMAN, POT_NOT_TAKEN, POT_SIZE, Game,
                                       InvalidMeld, Meld, RUN, SET, build_meld,
-                                      can_extend, is_wild, wild_stands_for)
+                                      can_extend, is_wild, order_meld,
+                                      the_wild, wild_stands_for)
 from cardgames.cards import (ACE, JOKER_RANK, KING, QUEEN, SUITS, Card,
                              burraco_deck)
 
@@ -451,6 +452,55 @@ def test_sorting_keeps_every_card():
     before = Counter(game.hands[HUMAN])
     game.sort_hand(HUMAN, "rank")
     assert Counter(game.hands[HUMAN]) == before
+
+
+def test_a_meld_reads_in_order_however_it_was_played():
+    meld = build_meld([Card(7, "Hearts"), Card(5, "Hearts"), Card(6, "Hearts")])
+    assert [card.rank for card in meld.cards] == [5, 6, 7]
+
+
+def test_the_wild_sits_in_the_hole_it_fills():
+    meld = build_meld([Card(7, "Hearts"), Card(5, "Hearts"), JOKER])
+    assert meld.cards[1] == JOKER, "the joker belongs between the five and seven"
+
+    at_the_end = build_meld([Card(5, "Hearts"), Card(6, "Hearts"), JOKER])
+    assert at_the_end.cards[-1] == JOKER, "with no hole it extends an end"
+
+
+def test_an_ace_reads_high_or_low_as_the_run_needs():
+    low = build_meld([Card(3, "Hearts"), Card(ACE, "Hearts"), Card(2, "Hearts")])
+    assert [card.rank for card in low.cards] == [ACE, 2, 3]
+    high = build_meld([Card(ACE, "Hearts"), Card(QUEEN, "Hearts"),
+                       Card(KING, "Hearts")])
+    assert [card.rank for card in high.cards] == [QUEEN, KING, ACE]
+
+
+def test_cards_added_later_are_folded_into_the_order():
+    game = Game(seed=1, first_player=HUMAN)
+    game.draw(HUMAN)
+    meld = build_meld([Card(5, "Hearts"), Card(6, "Hearts"), Card(7, "Hearts")])
+    game.melds[HUMAN] = [meld]
+    game.hands[HUMAN] = [Card(4, "Hearts"), Card(8, "Hearts")]
+
+    game.extend_meld(HUMAN, meld, [Card(8, "Hearts")])
+    game.extend_meld(HUMAN, meld, [Card(4, "Hearts")])
+    assert [card.rank for card in meld.cards] == [4, 5, 6, 7, 8], \
+        "a card added at the low end belongs at the low end"
+
+
+def test_a_set_reads_by_suit_with_the_wild_last():
+    meld = build_meld([Card(9, "Clubs"), Card(9, "Diamonds"), JOKER])
+    assert meld.cards[-1] == JOKER
+    assert [card.suit for card in meld.cards[:-1]] == ["Diamonds", "Clubs"]
+
+
+def test_the_wild_is_named_correctly_in_each_kind():
+    run = build_meld([Card(5, "Hearts"), JOKER, Card(7, "Hearts")])
+    assert the_wild(run) == JOKER
+    with_two = build_meld([Card(5, "Hearts"), Card(2, "Clubs"),
+                           Card(7, "Hearts")])
+    assert the_wild(with_two) == Card(2, "Clubs")
+    assert the_wild(seven_run()) is None, "nothing wild in a clean run"
 
 
 if __name__ == "__main__":

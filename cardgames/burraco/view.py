@@ -18,6 +18,7 @@ HAND_STEP = 58
 LIFT = 20
 MELD_W, MELD_H = 48, 72
 MELD_STEP = 21
+MELD_VSTEP = 15
 BACK_W, BACK_H = 62, 94
 BACK_STEP = 30
 
@@ -29,14 +30,16 @@ YOUR_MELD_Y = 420
 HAND_Y = 616
 
 STOCK_X = 44
+MELD_X0 = 240
 PILE_X = STOCK_X + 104
 
-ACTIONS = ("draw", "pile", "meld", "discard", "end")
+ACTIONS = ("draw", "pile", "meld", "swap", "discard", "end")
 SORTS = ("suit", "rank")
 SORT_LABELS = {"suit": "Sort by suit", "rank": "Sort by rank"}
 HOVER_LIFT = 10
 ACTION_LABELS = {"draw": "Draw a card", "pile": "Take the pile",
-                 "meld": "Lay down", "discard": "Discard", "end": "End turn"}
+                 "meld": "Lay down", "swap": "Take the pinella",
+                 "discard": "Discard", "end": "End turn"}
 
 
 # --- drawing --------------------------------------------------------------
@@ -96,22 +99,36 @@ def _draw_stock(app, game):
 
 
 def _draw_melds(app, game, player, top):
+    """Sets read across, runs read down.
+
+    A run standing up shows its corner index down one edge, which is the
+    order the cards are in — much easier to follow than a long horizontal
+    smear, and it leaves room for more melds side by side.
+    """
     canvas = app.canvas
     melds = game.melds[player]
     if not melds:
-        canvas.create_text(CENTER_X, top + MELD_H / 2,
-                           text="no melds yet", fill=FELT_EDGE,
-                           font=("Helvetica", 11))
+        canvas.create_text(CENTER_X, top + MELD_H / 2, text="no melds yet",
+                           fill=FELT_EDGE, font=("Helvetica", 11))
         return
 
-    x, y = 240, top
+    x, y, row_height = MELD_X0, top, 0
     for index, meld in enumerate(melds):
-        width = (len(meld) - 1) * MELD_STEP + MELD_W
-        if x + width > TABLE_W - 20:
-            x, y = 240, y + MELD_H + 16
+        vertical = meld.kind == "run"
+        if vertical:
+            width = MELD_W
+            height = (len(meld) - 1) * MELD_VSTEP + MELD_H
+        else:
+            width = (len(meld) - 1) * MELD_STEP + MELD_W
+            height = MELD_H
+        if x + width > TABLE_W - 16:
+            x, y, row_height = MELD_X0, y + row_height + 14, 0
+
         tag = f"meld{player}_{index}"
         for offset, card in enumerate(meld.cards):
-            cardart.draw_card(canvas, x + offset * MELD_STEP, y,
+            cardart.draw_card(canvas,
+                              x if vertical else x + offset * MELD_STEP,
+                              y + offset * MELD_VSTEP if vertical else y,
                               MELD_W, MELD_H, card, tags=(tag,))
         if meld.is_burraco:
             canvas.create_text(x + width / 2, y - 9,
@@ -120,7 +137,8 @@ def _draw_melds(app, game, player, top):
         if player == HUMAN:
             canvas.tag_bind(tag, "<Button-1>",
                             lambda _e, i=index: click_meld(app, i))
-        x += width + 22
+        x += width + 20
+        row_height = max(row_height, height)
 
 
 def _draw_hand(app, game):
@@ -276,16 +294,16 @@ def click_meld(app, index):
         app.say("Pick the cards to add first.")
         return
 
-    if len(cards) == 1 and cards[0] in wild_stands_for(meld):
-        game.substitute_wild(HUMAN, meld, cards[0])
-        app.note(f"You swap the {cards[0]} in and take the wild back")
-    else:
-        try:
-            game.extend_meld(HUMAN, meld, cards)
-        except (InvalidMeld, RuntimeError) as exc:
-            app.say(str(exc))
-            return
-        app.note(f"You add {len(cards)} card(s) to a {meld.kind}")
+    # Clicking a meld only ever adds to it. Buying the wild card back is a
+    # move of its own, on its own button: doing it as a side effect of adding
+    # a card meant the same click sometimes grew the meld and sometimes
+    # quietly pulled the wild out of it.
+    try:
+        game.extend_meld(HUMAN, meld, cards)
+    except (InvalidMeld, RuntimeError) as exc:
+        app.say(str(exc))
+        return
+    app.note(f"You add {len(cards)} card(s) to a {meld.kind}")
     app.selected.clear()
     sort_hand(app, app.sort_mode)
     app.after_move()
@@ -318,6 +336,22 @@ def click_action(app, key):
             game.discard(HUMAN, cards[0])
             app.note(f"You discard {cards[0]}")
             app.selected.clear()
+        elif key == "swap":
+            cards = _selected_cards(app)
+            if len(cards) != 1:
+                app.say("Select the one card the pinella is standing in for.")
+                return
+            for meld in game.melds[HUMAN]:
+                if cards[0] in wild_stands_for(meld):
+                    wild = game.substitute_wild(HUMAN, meld, cards[0])
+                    app.note(f"You put the {cards[0]} in and take the {wild}")
+                    app.selected.clear()
+                    sort_hand(app, app.sort_mode)
+                    break
+            else:
+                app.say(f"No meld of yours is standing on a wild card that "
+                        f"the {cards[0]} could replace.")
+                return
         elif key == "end":
             game.end_turn(HUMAN)
             app.note("You end the turn with an empty hand")

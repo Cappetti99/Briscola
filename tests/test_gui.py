@@ -681,7 +681,35 @@ def test_clicking_a_meld_extends_it():
         assert app.selected == set(), "the selection is cleared after the move"
 
 
-def test_clicking_a_meld_buys_the_pinella_back():
+def test_the_pinella_comes_back_on_its_own_button():
+    from cardgames import ui
+    from cardgames.burraco import view
+    from cardgames.burraco.engine import HUMAN as B_HUMAN, build_meld
+    from cardgames.cards import JOKER_RANK, Card
+
+    joker = Card(JOKER_RANK, "Joker")
+    with app_with_records(start=False) as (app, _store, _tmp):
+        app.set_game(ui.BURRACO)
+        app.start_game()
+        while app.state != gui.S_HUMAN:
+            app.update()
+            time.sleep(0.005)
+
+        view.click_action(app, "draw")
+        app.game.melds[B_HUMAN] = [build_meld([Card(5, "Hearts"), joker,
+                                               Card(7, "Hearts")])]
+        app.game.hands[B_HUMAN] = [Card(6, "Hearts")]
+        _select(app, [Card(6, "Hearts")])
+        view.click_action(app, "swap")
+
+        assert joker in app.game.hands[B_HUMAN], "the joker comes back to hand"
+        meld = app.game.melds[B_HUMAN][0]
+        assert meld.wilds == 0
+        assert [card.rank for card in meld.cards] == [5, 6, 7], "and in order"
+
+
+def test_adding_a_card_never_pulls_the_wild_out():
+    """Clicking a meld grows it. It must not quietly reclaim the pinella."""
     from cardgames import ui
     from cardgames.burraco import view
     from cardgames.burraco.engine import HUMAN as B_HUMAN, build_meld
@@ -702,8 +730,10 @@ def test_clicking_a_meld_buys_the_pinella_back():
         _select(app, [Card(6, "Hearts")])
         view.click_meld(app, 0)
 
-        assert joker in app.game.hands[B_HUMAN], "the joker comes back to hand"
-        assert app.game.melds[B_HUMAN][0].wilds == 0
+        meld = app.game.melds[B_HUMAN][0]
+        assert joker in meld.cards, "the joker stays on the table"
+        assert joker not in app.game.hands[B_HUMAN]
+        assert len(meld) == 4
 
 
 if __name__ == "__main__":

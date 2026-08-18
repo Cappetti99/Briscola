@@ -103,13 +103,74 @@ def build_meld(cards: list[Card]) -> Meld:
     if len(cards) < MIN_MELD:
         raise InvalidMeld(f"a meld needs at least {MIN_MELD} cards")
 
-    as_set = _try_set(cards)
-    if as_set is not None:
-        return as_set
-    as_run = _try_run(cards)
-    if as_run is not None:
-        return as_run
+    for attempt in (_try_set, _try_run):
+        meld = attempt(cards)
+        if meld is not None:
+            meld.cards = order_meld(meld)
+            return meld
     raise InvalidMeld("these cards are neither a set nor a run")
+
+
+def the_wild(meld: Meld) -> Card | None:
+    """Which card in the meld is the one standing in for another."""
+    if meld.wilds != 1:
+        return None
+    jokers = [card for card in meld.cards if card.is_joker]
+    if jokers:
+        return jokers[0]
+    if meld.kind == SET:
+        rank = meld.rank()
+        return next(card for card in meld.cards if card.rank != rank)
+    # In a run the wild two is the one the others do not need.
+    for card in meld.cards:
+        if not is_wild(card):
+            continue
+        rest = [other for other in meld.cards if other is not card]
+        if _run_fits([c for c in rest if not c.is_joker], 0):
+            return card
+    return next(card for card in meld.cards if is_wild(card))
+
+
+def order_meld(meld: Meld) -> list[Card]:
+    """Put a meld's cards in the order they are meant to be read.
+
+    A run reads along the sequence with the wild card sitting in the hole it
+    fills, rather than tacked on at the end where it was played; a set reads
+    by suit. Cards added later are folded in rather than appended.
+    """
+    wild = the_wild(meld)
+    naturals = [card for card in meld.cards if card is not wild]
+
+    if meld.kind == SET:
+        order = {suit: index for index, suit in enumerate(SUITS)}
+        naturals.sort(key=lambda card: order.get(card.suit, 9))
+        return naturals + ([wild] if wild else [])
+
+    ranks = sorted(card.rank for card in naturals)
+    high = _reads_ace_high(ranks, 1 if wild else 0)
+    naturals.sort(key=lambda card: _place(card.rank, high))
+    if wild is None:
+        return naturals
+
+    places = [_place(card.rank, high) for card in naturals]
+    for index in range(len(places) - 1):
+        if places[index + 1] - places[index] == 2:      # the hole it fills
+            return naturals[:index + 1] + [wild] + naturals[index + 1:]
+    # No hole: the wild extends an end. Above the top, unless the top is an ace.
+    if places[-1] >= ACE_HIGH:
+        return [wild] + naturals
+    return naturals + [wild]
+
+
+def _place(rank: int, ace_high: bool) -> int:
+    return ACE_HIGH if ace_high and rank == ACE else rank
+
+
+def _reads_ace_high(ranks: list[int], wilds: int) -> bool:
+    if ACE not in ranks:
+        return False
+    high = [ACE_HIGH if rank == ACE else rank for rank in ranks]
+    return max(high) - min(high) + 1 <= len(ranks) + wilds
 
 
 def _try_set(cards: list[Card]) -> Meld | None:
