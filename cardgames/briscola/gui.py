@@ -10,8 +10,9 @@ import traceback
 import tkinter as tk
 from tkinter import simpledialog
 
-from . import ai, cardart, records
-from .cards import KING, QUEEN, RANK_NAMES, Card
+from .. import cardart, records
+from . import ai
+from ..cards import KING, QUEEN, RANK_NAMES, Card
 from .engine import AI, HUMAN, TOTAL_POINTS, TRICKS_PER_GAME, WINNING_POINTS, Game
 
 # Window geometry.

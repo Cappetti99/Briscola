@@ -19,9 +19,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from briscola import ai, cardart, gui, records          # noqa: E402
-from briscola.cards import RANKS, SUITS, Card           # noqa: E402
-from briscola.engine import AI, HUMAN                   # noqa: E402
+from cardgames import cardart, records                # noqa: E402
+from cardgames.briscola import ai, gui                 # noqa: E402
+from cardgames.cards import BRISCOLA_RANKS, SUITS, Card   # noqa: E402
+from cardgames.briscola.engine import AI, HUMAN                   # noqa: E402
 
 DOCS = ROOT / "docs"
 DPI = 110
@@ -150,7 +151,7 @@ def shot_deck():
     canvas.pack()
     canvas.create_rectangle(0, 0, width, height, fill=gui.FELT, outline="")
     for row, suit in enumerate(SUITS):
-        for col, rank in enumerate(RANKS):
+        for col, rank in enumerate(BRISCOLA_RANKS):
             cardart.draw_card(canvas, gap + col * (w + gap),
                               gap + row * (h + gap), w, h, Card(rank, suit),
                               highlight=(row == 0 and col == 0))

@@ -52,6 +52,13 @@ PIP_LAYOUTS = {
         (0.33, 0.76), (0.67, 0.76)],
     7: [(0.33, 0.23), (0.67, 0.23), (0.33, 0.45), (0.67, 0.45),
         (0.50, 0.61), (0.33, 0.78), (0.67, 0.78)],
+    8: [(0.33, 0.22), (0.67, 0.22), (0.33, 0.42), (0.67, 0.42),
+        (0.33, 0.61), (0.67, 0.61), (0.33, 0.80), (0.67, 0.80)],
+    9: [(0.33, 0.21), (0.67, 0.21), (0.33, 0.39), (0.67, 0.39),
+        (0.50, 0.50), (0.33, 0.61), (0.67, 0.61), (0.33, 0.79), (0.67, 0.79)],
+    10: [(0.33, 0.20), (0.67, 0.20), (0.33, 0.37), (0.67, 0.37),
+         (0.50, 0.285), (0.50, 0.715), (0.33, 0.63), (0.67, 0.63),
+         (0.33, 0.80), (0.67, 0.80)],
 }
 
 
@@ -66,7 +73,7 @@ def round_rect(canvas, x1, y1, x2, y2, r, **kw):
 def draw_card(canvas, x, y, w, h, card: Card, tags=(), highlight=False,
               dim=False):
     """Draw a face-up card with its top-left corner at (x, y)."""
-    color = SUIT_COLORS[card.suit]
+    color = SUIT_COLORS.get(card.suit, "#7a4fa3")   # jokers get their own ink
     radius = max(6, w * 0.10)
 
     round_rect(canvas, x + 3, y + 4, x + w + 3, y + h + 4, radius,
@@ -88,7 +95,9 @@ def draw_card(canvas, x, y, w, h, card: Card, tags=(), highlight=False,
     canvas.create_text(x + w * 0.83, y + h * 0.90, text=label, fill=color,
                        font=font_small, tags=tags)
 
-    if STYLE == "minimal":
+    if card.is_joker:
+        _draw_joker(canvas, x, y, w, h, color, tags)
+    elif STYLE == "minimal":
         _draw_minimal(canvas, x, y, w, h, card, color, tags)
     elif card.is_face:
         _draw_face_card(canvas, x, y, w, h, card, color, tags)
@@ -149,6 +158,20 @@ def _draw_minimal(canvas, x, y, w, h, card, color, tags):
     canvas.create_text(x + w * 0.5, y + h * 0.44, text=card.label, fill=color,
                        font=("Helvetica", int(h * 0.34), "bold"), tags=tags)
     emblem(canvas, card.suit, x + w * 0.5, y + h * 0.72, w * 0.26, color, tags)
+
+
+def _draw_joker(canvas, x, y, w, h, color, tags):
+    """A jester's cap: the one card that is not a rank in a suit."""
+    cx, cy = x + w * 0.5, y + h * 0.52
+    r = w * 0.30
+    canvas.create_polygon(cx - r, cy + r * 0.55, cx + r, cy + r * 0.55,
+                         cx + r * 0.72, cy - r * 0.15, cx, cy - r * 0.75,
+                         cx - r * 0.72, cy - r * 0.15,
+                         fill=color, outline=color, smooth=True, tags=tags)
+    for dx in (-1, 0, 1):
+        canvas.create_oval(cx + dx * r * 0.78 - r * 0.2, cy - r * 0.95 - r * 0.2,
+                           cx + dx * r * 0.78 + r * 0.2, cy - r * 0.95 + r * 0.2,
+                           fill=color, outline=color, tags=tags)
 
 
 def _draw_pips(canvas, x, y, w, h, card, color, tags):

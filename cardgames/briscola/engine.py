@@ -6,7 +6,7 @@ Rules reference: https://en.wikipedia.org/wiki/Briscola
 import random
 from dataclasses import dataclass, field
 
-from .cards import Card, new_deck
+from ..cards import Card, new_deck
 
 HUMAN = 0
 AI = 1

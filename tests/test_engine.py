@@ -8,9 +8,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from briscola import ai
-from briscola.cards import Card, new_deck
-from briscola.engine import (AI, HUMAN, TOTAL_POINTS, TRICKS_PER_GAME, Game,
+from cardgames.briscola import ai
+from cardgames.cards import KING, Card, new_deck
+from cardgames.briscola.engine import (AI, HUMAN, TOTAL_POINTS, TRICKS_PER_GAME, Game,
                              beats_lead)
 
 
@@ -68,8 +68,8 @@ def test_beats_lead():
     # Different suits, no trump: the leader keeps the trick.
     assert not beats_lead(Card(2, "Spades"), Card(1, "Diamonds"), trump)
     # Trump against trump: strength decides.
-    assert beats_lead(Card(4, "Hearts"), Card(10, "Hearts"), trump)
-    assert not beats_lead(Card(10, "Hearts"), Card(4, "Hearts"), trump)
+    assert beats_lead(Card(4, "Hearts"), Card(KING, "Hearts"), trump)
+    assert not beats_lead(Card(KING, "Hearts"), Card(4, "Hearts"), trump)
 
 
 def test_full_games():

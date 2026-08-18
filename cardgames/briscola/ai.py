@@ -17,7 +17,7 @@
 import random
 import time
 
-from .cards import Card, new_deck
+from ..cards import Card, new_deck
 from .engine import AI, HUMAN, WINNING_POINTS, Game, beats_lead
 
 EASY, NORMAL, HARD = "easy", "normal", "hard"

@@ -13,8 +13,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from briscola import ai, gui, records
-from briscola.engine import AI, HUMAN, TOTAL_POINTS
+from cardgames import records
+from cardgames.briscola import ai, gui
+from cardgames.briscola.engine import AI, HUMAN, TOTAL_POINTS
 
 
 @contextmanager
