@@ -6,3 +6,6 @@ __pycache__/
 records.json
 records.txt
 records.json.tmp
+
+# Working notes between sessions: local only, never pushed.
+handoff.md

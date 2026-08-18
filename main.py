@@ -1,4 +1,4 @@
-"""Entry point: start a game of Briscola with the graphical interface."""
+"""Entry point: opens the menu, from which either game is dealt."""
 
 from cardgames.briscola.gui import main
 

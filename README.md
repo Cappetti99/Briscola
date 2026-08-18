@@ -223,15 +223,15 @@ Measured on an Apple M2, per decision:
 | Level | Mean | Worst |
 | --- | --- | --- |
 | Easy, Normal | under 1 ms | under 1 ms |
-| Expert | ~103 ms | ~122 ms |
+| Expert | ~103 ms | ~134 ms |
 
 The Expert search runs in the interface thread, so it is capped by a wall-clock
 budget (`ai.TIME_BUDGET`, 120 ms) as well as by a number of sampled worlds,
 whichever ends first. On a slower machine it samples fewer worlds instead of
 freezing for longer.
 
-Idle — on the menu or waiting for your card — the process measures **0.1% CPU
-and about 69 MB resident**. If the interface ever misbehaves, run it with
+Idle — on the menu or waiting for your card — the process measures **0.2% CPU
+and about 78 MB resident**. If the interface ever misbehaves, run it with
 `BRISCOLA_DEBUG=1` and it traces every turn, click, timer and opponent decision
 to stdout; exceptions inside a callback are printed and shown in the status bar
 rather than swallowed.
@@ -264,11 +264,11 @@ conda run -n briscola python tests/test_burraco.py
 
 | File | Tests | Time | Covers |
 | --- | --- | --- | --- |
-| `test_layout.py` | 16 | 0.02 s | Table geometry, with no window at all |
-| `test_records.py` | 7 | 0.1 s | The json store and the text log |
-| `test_burraco.py` | 56 | 2.6 s | Burraco rules, melds, wild cards, scoring, the opponent |
+| `test_layout.py` | 21 | 0.08 s | Table geometry, with no window at all |
+| `test_records.py` | 7 | 0.05 s | The json store and the text log |
+| `test_burraco.py` | 56 | 2.5 s | Burraco rules, melds, wild cards, scoring, the opponent |
 | `test_engine.py` | 8 | 12 s | Briscola rules and the relative strength of the levels |
-| `test_gui.py` | 22 | 19 s | The window: event routing, turns, records |
+| `test_gui.py` | 22 | 18 s | The window: event routing, turns, records |
 
 `test_gui.py` drives the interface with real Tk mouse events, including a whole
 Burraco hand played only by clicking real controls. Its windows are parked off
