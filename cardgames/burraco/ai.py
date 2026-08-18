@@ -3,10 +3,10 @@
 import random
 from collections import Counter
 
-from ..cards import RANKS, SUITS, Card
-from .engine import (AI, BURRACO_SIZE, MIN_MELD, CARD_POINTS, Game,
-                     InvalidMeld, Meld, Stranded, Turn, build_meld, can_extend,
-                     is_wild, wild_stands_for)
+from ..cards import RANKS, SUITS, Card, burraco_deck
+from .engine import (AI, BURRACO_SIZE, MIN_MELD, CARD_POINTS, POT_SIZE,
+                     PLAYERS, Game, InvalidMeld, Meld, Stranded, Turn,
+                     build_meld, can_extend, is_wild, wild_stands_for)
 
 EASY, NORMAL, HARD = "easy", "normal", "hard"
 
@@ -52,7 +52,7 @@ def take_turn(game: Game, player: int, level: str = NORMAL,
     moves = []
 
     if level == HARD:
-        return _play_searched_turn(game, player)
+        return _play_searched_turn(game, player, rng)
 
     moves.append(_draw_phase(game, player, level))
     if game.game_over:
@@ -78,9 +78,11 @@ def take_turn(game: Game, player: int, level: str = NORMAL,
     return moves
 
 
-def _play_searched_turn(game: Game, player: int) -> list[str]:
+def _play_searched_turn(game: Game, player: int,
+                        rng: random.Random | None = None) -> list[str]:
     """Play the turn the search picked, falling back if it finds nothing."""
-    plan = search_turn(game, player)
+    plan = (search_turn_by_playout(game, player, rng) if PLAYOUT
+            else search_turn(game, player))
     if not plan:
         return [_draw_phase(game, player, NORMAL)]
 
@@ -575,3 +577,117 @@ def _discard_options(game: Game, player: int) -> list[Card]:
         seen.add(card)
         out.append(card)
     return out
+
+
+# --- evaluating by playing it out -----------------------------------------
+#
+# The weakness of `position_value` is that every weight in it was guessed. This
+# scores a plan the way Briscola's expert scores a card: deal the cards you
+# cannot see into the opponent's hand, the stock and the pots, play the rest of
+# the hand out with the cheap policy, and see what the hand was actually worth.
+# Nothing is guessed except how many worlds to sample and how far to play.
+
+# Off, and measured: 42% of the points against Normal and 5-15 on matches, at
+# 21 seconds a hand. The likely reason is not the idea but the arithmetic. The
+# search ranks about two dozen plans on two samples each, and taking the best
+# of two dozen noisy estimates mostly finds whichever one got a lucky sample —
+# the estimate that wins is the one with the largest error, not the largest
+# value. Briscola's expert samples a hundred worlds for three candidates,
+# which is the opposite ratio.
+#
+# The test worth running next is that ratio: cut the plans to the handful the
+# cheap rule likes best, and spend the samples on them instead. At 660 ms for
+# forty-eight playouts, thirty worlds over six plans costs about two seconds a
+# turn, so it can be measured even if it could never be played with.
+PLAYOUT = False
+PLAYOUT_WORLDS = 2
+PLAYOUT_DISCARDS = 4
+PLAYOUT_CAP = 60
+
+
+def unseen_cards(game: Game, player: int) -> list[Card]:
+    """What could be in the opponent's hand, the stock or the pots.
+
+    Every card is in exactly one place, and three of them are public: our own
+    hand, the melds on both sides, and the discard pile. What is left is what
+    we cannot see.
+    """
+    placed = Counter(game.hands[player]) + Counter(game.discards)
+    for side in game.melds:
+        for meld in side:
+            placed += Counter(meld.cards)
+    rest = Counter(burraco_deck())
+    rest.subtract(placed)
+    return list(rest.elements())
+
+
+def sample_world(game: Game, player: int, rng: random.Random) -> Game:
+    """One way the unseen cards could be arranged."""
+    unseen = unseen_cards(game, player)
+    rng.shuffle(unseen)
+
+    world = _clone(game)
+    other = 1 - player
+    held = len(game.hands[other])
+    world.hands[other] = unseen[:held]
+    rest = unseen[held:]
+    for side in PLAYERS:
+        if world.pots[side]:
+            world.pots[side] = rest[:POT_SIZE]
+            rest = rest[POT_SIZE:]
+    world.stock = rest
+    return world
+
+
+def play_out(world: Game, player: int, rng: random.Random) -> float:
+    """Finish the hand with the cheap policy and report the margin."""
+    turns = 0
+    while not world.game_over and turns < PLAYOUT_CAP:
+        try:
+            take_turn(world, world.turn, NORMAL, rng)
+        except (RuntimeError, InvalidMeld, Stranded):
+            break
+        turns += 1
+    return world.score(player) - world.score(1 - player)
+
+
+def search_turn_by_playout(game: Game, player: int,
+                           rng: random.Random | None = None) -> list:
+    """Pick the turn that plays out best across a few sampled worlds."""
+    rng = rng or _rng
+    plans = []
+    for plan in _turn_plans(game, player):
+        trial = _clone(game)
+        try:
+            for move in plan:
+                _apply(trial, player, move)
+        except (RuntimeError, InvalidMeld, Stranded):
+            continue
+        _extend_everything(trial, player)
+        # Only the discards the cheap rule likes: trying all twenty is what
+        # makes this too slow to play with.
+        options = sorted(_discard_options(trial, player),
+                         key=lambda card: _keep_score(trial, player,
+                                                      trial.hands[player], card))
+        for card in options[:PLAYOUT_DISCARDS]:
+            plans.append(plan + [("discard", card)])
+
+    if not plans:
+        return []
+
+    worlds = [sample_world(game, player, rng) for _ in range(PLAYOUT_WORLDS)]
+    best, best_value = plans[0], None
+    for plan in plans:
+        total = 0.0
+        for world in worlds:
+            trial = _clone(world)
+            try:
+                for move in plan:
+                    _apply(trial, player, move)
+            except (RuntimeError, InvalidMeld, Stranded):
+                total -= 500
+                continue
+            total += play_out(trial, player, random.Random(0))
+        if best_value is None or total > best_value:
+            best, best_value = plan, total
+    return best

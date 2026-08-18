@@ -788,6 +788,36 @@ def test_a_position_is_worth_more_with_the_meld_on_the_table():
         "the same cards are worth more on the table than in the hand"
 
 
+def test_a_sampled_world_is_a_world_that_could_be():
+    """The cards we cannot see, dealt out in one possible arrangement."""
+    import random
+
+    from cardgames.burraco import ai as burraco_ai
+
+    game = Game(seed=7, first_player=HUMAN)
+    game.draw(HUMAN)
+    game.discard(HUMAN, game.hands[HUMAN][0])
+
+    unseen = burraco_ai.unseen_cards(game, HUMAN)
+    assert Card(0, "Joker") is not None
+    # Nothing we can see is in it, and it accounts for everything else.
+    for card in game.hands[HUMAN]:
+        assert Counter(unseen)[card] < Counter(burraco_deck())[card]
+    assert len(unseen) == (len(game.hands[AI]) + len(game.stock)
+                           + len(game.pots[0]) + len(game.pots[1]))
+
+    world = burraco_ai.sample_world(game, HUMAN, random.Random(1))
+    assert world.hands[HUMAN] == game.hands[HUMAN], "our own hand is untouched"
+    assert len(world.hands[AI]) == len(game.hands[AI])
+    assert len(world.stock) == len(game.stock)
+    everywhere = Counter(world.hands[0] + world.hands[1] + world.stock
+                         + world.discards + world.pots[0] + world.pots[1])
+    for melds in world.melds:
+        for meld in melds:
+            everywhere.update(meld.cards)
+    assert everywhere == Counter(burraco_deck()), "a full deck, rearranged"
+
+
 if __name__ == "__main__":
     failures = 0
     for name, fn in sorted(globals().items()):
