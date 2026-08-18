@@ -10,7 +10,7 @@ from cardgames.burraco.engine import (AI, BURRACO_CLEAN, BURRACO_DIRTY,
                                       CARD_POINTS, CLOSING_BONUS, HAND_SIZE,
                                       HUMAN, POT_NOT_TAKEN, POT_SIZE, Game,
                                       InvalidMeld, Meld, RUN, SET, build_meld,
-                                      can_extend, is_wild)
+                                      can_extend, is_wild, wild_stands_for)
 from cardgames.cards import ACE, JOKER_RANK, KING, QUEEN, Card, burraco_deck
 
 JOKER = Card(JOKER_RANK, "Joker")
@@ -289,6 +289,130 @@ def test_winner_compares_the_two_scores():
     game.melds[AI] = []
     game.hands = [[], []]
     assert game.winner() == HUMAN
+
+
+# --- the pinella, taken back out of a meld --------------------------------
+
+def test_a_wild_in_a_run_stands_for_one_card():
+    run = build_meld([Card(5, "Hearts"), JOKER, Card(7, "Hearts")])
+    assert wild_stands_for(run) == [Card(6, "Hearts")]
+
+
+def test_a_wild_at_the_end_of_a_run_stands_for_either_end():
+    run = build_meld([Card(5, "Hearts"), Card(6, "Hearts"), JOKER])
+    assert set(wild_stands_for(run)) == {Card(4, "Hearts"), Card(7, "Hearts")}
+
+
+def test_a_wild_in_a_set_stands_for_any_of_that_rank():
+    meld = build_meld([Card(9, "Hearts"), Card(9, "Spades"), JOKER])
+    assert set(wild_stands_for(meld)) == {Card(9, suit) for suit in
+                                          ("Diamonds", "Hearts", "Spades", "Clubs")}
+
+
+def test_a_meld_with_no_wild_has_nothing_to_swap():
+    assert wild_stands_for(seven_run()) == []
+
+
+def test_swapping_the_pinella_puts_it_back_in_your_hand():
+    game = Game(seed=5, first_player=HUMAN)
+    game.draw(HUMAN)
+    game.melds[HUMAN] = [build_meld([Card(5, "Hearts"), JOKER,
+                                     Card(7, "Hearts")])]
+    game.hands[HUMAN] = [Card(6, "Hearts")]
+
+    freed = game.substitute_wild(HUMAN, game.melds[HUMAN][0], Card(6, "Hearts"))
+    assert freed == JOKER
+    assert JOKER in game.hands[HUMAN]
+    meld = game.melds[HUMAN][0]
+    assert meld.wilds == 0 and Card(6, "Hearts") in meld.cards
+    assert len(meld) == 3
+
+
+def test_you_cannot_swap_in_the_wrong_card():
+    game = Game(seed=5, first_player=HUMAN)
+    game.draw(HUMAN)
+    game.melds[HUMAN] = [build_meld([Card(5, "Hearts"), JOKER,
+                                     Card(7, "Hearts")])]
+    game.hands[HUMAN] = [Card(6, "Spades")]
+    try:
+        game.substitute_wild(HUMAN, game.melds[HUMAN][0], Card(6, "Spades"))
+    except InvalidMeld:
+        pass
+    else:
+        raise AssertionError("the six of spades is not what the joker stands for")
+
+
+# --- melding out ----------------------------------------------------------
+
+def test_laying_down_your_last_cards_takes_the_pot():
+    game = Game(seed=5, first_player=HUMAN)
+    game.draw(HUMAN)
+    game.hands[HUMAN] = [Card(5, "Hearts"), Card(6, "Hearts"), Card(7, "Hearts")]
+    game.lay_meld(HUMAN, list(game.hands[HUMAN]))
+    assert game.pot_taken[HUMAN] is True
+    assert len(game.hands[HUMAN]) == POT_SIZE
+
+
+def test_an_empty_hand_can_end_the_turn_without_discarding():
+    game = Game(seed=5, first_player=HUMAN)
+    game.draw(HUMAN)
+    game.pot_taken[HUMAN] = True
+    game.hands[HUMAN] = [Card(5, "Hearts"), Card(6, "Hearts"), Card(7, "Hearts")]
+    game.lay_meld(HUMAN, list(game.hands[HUMAN]))
+    assert game.hands[HUMAN] == []
+    game.end_turn(HUMAN)
+    assert game.turn == AI
+
+
+# --- the computer plays ---------------------------------------------------
+
+def test_the_computer_finishes_every_hand():
+    """Both seats played by the computer: every hand has to end, and end well.
+
+    An earlier draft never finished. Taking the discard pile only ever grows a
+    hand, so a player who kept taking it never ran out of cards and the stock
+    never drained.
+    """
+    import random
+
+    from cardgames.burraco import ai as burraco_ai
+
+    for seed in range(25):
+        game = Game(seed=seed)
+        rng = random.Random(seed)
+        turns = 0
+        while not game.game_over and turns < 300:
+            burraco_ai.take_turn(game, game.turn, rng=rng)
+            turns += 1
+
+        assert game.game_over, f"seed {seed}: still going after {turns} turns"
+        everywhere = Counter(game.hands[0] + game.hands[1] + game.stock
+                             + game.discards + game.pots[0] + game.pots[1])
+        for melds in game.melds:
+            for meld in melds:
+                everywhere.update(meld.cards)
+        assert everywhere == Counter(burraco_deck()), f"seed {seed}: cards lost"
+        assert isinstance(game.score(HUMAN), int)
+
+
+def test_the_computer_only_makes_legal_melds():
+    import random
+
+    from cardgames.burraco import ai as burraco_ai
+
+    for seed in range(15):
+        game = Game(seed=seed)
+        rng = random.Random(seed)
+        turns = 0
+        while not game.game_over and turns < 300:
+            burraco_ai.take_turn(game, game.turn, rng=rng)
+            turns += 1
+        for melds in game.melds:
+            for meld in melds:
+                rebuilt = build_meld(meld.cards)
+                assert rebuilt.kind == meld.kind
+                assert rebuilt.wilds == meld.wilds
+                assert len(meld) >= 3
 
 
 if __name__ == "__main__":

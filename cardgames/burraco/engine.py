@@ -14,7 +14,8 @@ import random
 from collections import Counter
 from dataclasses import dataclass, field
 
-from ..cards import ACE, JOKER_RANK, KING, Card, burraco_deck
+from ..cards import (ACE, JOKER_RANK, KING, RANKS, SUITS, Card,
+                     burraco_deck)
 
 HUMAN = 0
 AI = 1
@@ -198,6 +199,36 @@ def _run_fits(naturals: list[Card], wilds: int) -> bool:
     return False
 
 
+def wild_stands_for(meld: Meld) -> list[Card]:
+    """The natural cards that could take the wild card's place in a meld.
+
+    Worked out by trying every ranked card and keeping the ones that leave a
+    legal meld of the same size with no wild left in it. Brute force over 52
+    candidates, which costs nothing and means runs and sets need no separate
+    reasoning — the gap in A-3-4-5 and the fourth nine of a set both fall out
+    of the same check.
+    """
+    if meld.wilds != 1:
+        return []
+    wild = next(card for card in meld.cards if is_wild(card))
+    rest = list(meld.cards)
+    rest.remove(wild)
+
+    candidates = []
+    for suit in SUITS:
+        for rank in RANKS:
+            card = Card(rank, suit)
+            if is_wild(card):
+                continue
+            try:
+                grown = build_meld(rest + [card])
+            except InvalidMeld:
+                continue
+            if grown.wilds == 0 and len(grown) == len(meld):
+                candidates.append(card)
+    return candidates
+
+
 def can_extend(meld: Meld, card: Card) -> bool:
     """Whether one more card may join a meld already on the table."""
     try:
@@ -233,6 +264,7 @@ class Game:
     turn: int = HUMAN
     phase: Turn = field(default_factory=Turn)
     closed_by: int | None = None
+    exhausted: bool = False
 
     def __post_init__(self):
         rng = random.Random(self.seed)
@@ -253,7 +285,15 @@ class Game:
 
     @property
     def game_over(self) -> bool:
-        return self.closed_by is not None or not self.stock and not self.discards
+        """Someone closed, or the stock ran out.
+
+        Ending the hand with the stock is a simplification: the full rules let
+        play carry on as long as a player keeps taking the discard pile, which
+        with two players can circle forever — take one card, discard one card,
+        neither hand ever shrinking. Ending on the stock keeps every hand
+        finite, and the scoring below then decides it.
+        """
+        return self.closed_by is not None or self.exhausted
 
     def has_burraco(self, player: int) -> bool:
         return any(meld.is_burraco for meld in self.melds[player])
@@ -269,6 +309,7 @@ class Game:
         if self.phase.drawn:
             raise RuntimeError("you have already drawn this turn")
         if not self.stock:
+            self.exhausted = True
             raise RuntimeError("the stock is empty")
         card = self.stock.pop(0)
         self.hands[player].append(card)
@@ -297,6 +338,7 @@ class Game:
             self.hands[player].extend(cards)      # put them back, unchanged
             raise
         self.melds[player].append(meld)
+        self._after_hand_shrinks(player)
         return meld
 
     def extend_meld(self, player: int, meld: Meld, cards: list[Card]) -> Meld:
@@ -313,6 +355,28 @@ class Game:
         meld.cards, meld.kind, meld.wilds = grown.cards, grown.kind, grown.wilds
         return meld
 
+    def substitute_wild(self, player: int, meld: Meld, card: Card) -> Card:
+        """Put the natural card in and take the wild card back into hand.
+
+        The pinella is worth more in your hand than propping up a meld you
+        can complete properly, so a player holding the card the wild stands
+        for may swap them over.
+        """
+        self._check_turn(player)
+        self._require_drawn()
+        if meld not in self.melds[player]:
+            raise RuntimeError("that meld belongs to the other player")
+        if card not in wild_stands_for(meld):
+            raise InvalidMeld("that card is not what the wild stands for")
+
+        self._take_from_hand(player, [card])
+        wild = next(one for one in meld.cards if is_wild(one))
+        replaced = [card if one is wild else one for one in meld.cards]
+        grown = build_meld(replaced)
+        meld.cards, meld.kind, meld.wilds = grown.cards, grown.kind, grown.wilds
+        self.hands[player].append(wild)
+        return wild
+
     def discard(self, player: int, card: Card) -> None:
         self._check_turn(player)
         self._require_drawn()
@@ -323,9 +387,25 @@ class Game:
             self.turn = 1 - player
             self.phase = Turn()
 
+    def end_turn(self, player: int) -> None:
+        """Hand over without discarding, which only an empty hand allows."""
+        self._check_turn(player)
+        self._require_drawn()
+        if self.hands[player]:
+            raise RuntimeError("discard before ending your turn")
+        if self.closed_by is None:
+            self.turn = 1 - player
+            self.phase = Turn()
+
     # --- pot and closing --------------------------------------------------
 
     def _after_hand_shrinks(self, player: int) -> None:
+        """Emptying your hand takes the pot, or closes if you already have it.
+
+        This fires on melding as well as on discarding: laying every last card
+        down is a legal way to run out, and the pot then comes into the same
+        turn, which is how the rules read.
+        """
         if self.hands[player]:
             return
         if not self.pot_taken[player]:
