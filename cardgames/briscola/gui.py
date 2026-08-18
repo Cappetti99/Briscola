@@ -22,16 +22,9 @@ from ..ui import (ACCENT, ACCENT_TEXT, CONTENT_W, CONTENT_X, FELT, FELT_DARK,
                   PANEL_X, STATUS_H, TABLE_H, TABLE_W, TEXT, TEXT_DIM,
                   WIN_H, WIN_W)
 
-# Table layout.
-CARD_W, CARD_H = 106, 162
-HAND_GAP = 18
-LIFT = 22
-CENTER_X = TABLE_W // 2
-AI_HAND_Y = 24
-TABLE_Y = 250
-PLAYER_HAND_Y = 580
-STOCK_X, STOCK_Y = 26, 300
-LOG_LINES = 10
+from .layout import (AI_HAND_Y, CARD_H, CARD_W, CENTER_X, HAND_GAP, LIFT,
+                     LOG_LINES, PLAYER_HAND_Y, STOCK_X, STOCK_Y, TABLE_Y,
+                     hand_slot_at, hand_x, table_slot)
 
 # Pacing (ms). Both waits can be skipped with a click or the space bar.
 AI_DELAY = 550
@@ -343,13 +336,10 @@ class BriscolaApp(tk.Tk):
                       anchor="e", angle=90)
 
     def _hand_x(self, count: int, index: int) -> float:
-        total = count * CARD_W + (count - 1) * HAND_GAP
-        return CENTER_X - total / 2 + index * (CARD_W + HAND_GAP)
+        return hand_x(count, index)
 
     def _table_slot(self, player: int) -> tuple[float, float]:
-        if player == AI:
-            return CENTER_X - CARD_W - 18, TABLE_Y - 10
-        return CENTER_X + 18, TABLE_Y + 26
+        return table_slot(player)
 
     def _draw_ai_hand(self, game):
         for i in range(len(game.hands[AI])):
@@ -453,20 +443,13 @@ class BriscolaApp(tk.Tk):
     # where the card has been moved to.
 
     def _hand_slot_at(self, x: float, y: float) -> int | None:
-        """Which hand card the pointer is over, lifted or not."""
+        """The pointer's card, or None. The sums live in layout.py."""
         game = self.game
         if game is None or self.state != S_HUMAN or self.overlay is not None:
             return None
         if self.game_kind != ui.BRISCOLA:
             return None     # Burraco lays its hand out differently entirely
-        if not PLAYER_HAND_Y - LIFT <= y <= PLAYER_HAND_Y + CARD_H:
-            return None
-        count = len(game.hands[HUMAN])
-        for index in range(count):
-            left = self._hand_x(count, index)
-            if left <= x <= left + CARD_W:
-                return index
-        return None
+        return hand_slot_at(x, y, len(game.hands[HUMAN]))
 
     def _on_motion(self, event):
         if self.game_kind == ui.BURRACO and self.state == S_HUMAN:

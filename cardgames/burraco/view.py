@@ -12,27 +12,11 @@ from . import ai as burraco_ai
 from .engine import (AI, HUMAN, InvalidMeld, Stranded, is_wild,
                      wild_stands_for)
 
-# Card sizes: hands are eleven cards or more, so they are smaller than in
-# Briscola and they overlap.
-HAND_W, HAND_H = 82, 124
-HAND_STEP = 58
-LIFT = 20
-MELD_W, MELD_H = 48, 72
-MELD_STEP = 21
-MELD_VSTEP = 15
-BACK_W, BACK_H = 62, 94
-BACK_STEP = 30
-
-CENTER_X = TABLE_W // 2
-OPP_HAND_Y = 16
-OPP_MELD_Y = 128
-STOCK_Y = 310
-YOUR_MELD_Y = 420
-HAND_Y = 616
-
-STOCK_X = 44
-MELD_X0 = 240
-PILE_X = STOCK_X + 104
+from .layout import (BACK_H, BACK_STEP, BACK_W, CENTER_X, HAND_H, HAND_STEP,
+                     HAND_W, HAND_Y, HOVER_LIFT, LIFT, MELD_H, MELD_W,
+                     MELD_X0, OPP_HAND_Y, OPP_MELD_Y, PILE_X, STOCK_X,
+                     STOCK_Y, YOUR_MELD_Y, card_position, hand_slot_at,
+                     hand_x, meld_boxes)
 
 ACTIONS = ("draw", "pile", "meld", "swap", "discard", "end")
 SORTS = ("suit", "rank")
@@ -113,24 +97,15 @@ def _draw_melds(app, game, player, top):
                            fill=FELT_EDGE, font=("Helvetica", 11))
         return
 
-    x, y, row_height = MELD_X0, top, 0
-    for index, meld in enumerate(melds):
-        vertical = meld.kind == "run"
-        if vertical:
-            width = MELD_W
-            height = (len(meld) - 1) * MELD_VSTEP + MELD_H
-        else:
-            width = (len(meld) - 1) * MELD_STEP + MELD_W
-            height = MELD_H
-        if x + width > TABLE_W - 16:
-            x, y, row_height = MELD_X0, y + row_height + 14, 0
-
+    boxes = meld_boxes([meld.kind for meld in melds],
+                       [len(meld) for meld in melds], top)
+    for index, (meld, box) in enumerate(zip(melds, boxes)):
+        x, y, width, _height, _vertical = box
         tag = f"meld{player}_{index}"
         for offset, card in enumerate(meld.cards):
-            cardart.draw_card(canvas,
-                              x if vertical else x + offset * MELD_STEP,
-                              y + offset * MELD_VSTEP if vertical else y,
-                              MELD_W, MELD_H, card, tags=(tag,))
+            card_x, card_y = card_position(box, offset)
+            cardart.draw_card(canvas, card_x, card_y, MELD_W, MELD_H, card,
+                              tags=(tag,))
         if meld.is_burraco:
             canvas.create_text(x + width / 2, y - 9,
                                text="BURRACO" + ("" if meld.is_clean else " *"),
@@ -138,17 +113,13 @@ def _draw_melds(app, game, player, top):
         if player == HUMAN:
             canvas.tag_bind(tag, "<Button-1>",
                             lambda _e, i=index: click_meld(app, i))
-        x += width + 20
-        row_height = max(row_height, height)
 
 
 def _draw_hand(app, game):
     canvas = app.canvas
     hand = game.hands[HUMAN]
-    total = (len(hand) - 1) * HAND_STEP + HAND_W if hand else 0
-    start = CENTER_X - total / 2
     for index, card in enumerate(hand):
-        x = start + index * HAND_STEP
+        x = hand_x(len(hand), index)
         y = HAND_Y - (LIFT if index in app.selected
                       else HOVER_LIFT if index == app.hovered else 0)
         tag = f"hand{index}"
@@ -161,28 +132,16 @@ def _draw_hand(app, game):
                        fill=FELT_EDGE, font=("Helvetica", 10, "bold"))
 
 
-def hand_slot_at(app, x, y):
-    """Which hand card the pointer is over, from the fixed fan geometry.
-
-    Like Briscola's, this deliberately ignores where a card has been lifted
-    to: an answer that changed as the card moved would have the lift and the
-    pointer chasing each other.
-    """
+def pointed_card(app, x, y):
+    """The card under the pointer, once the window agrees we may pick one."""
     game = app.game
-    hand = game.hands[HUMAN] if game else []
-    if not hand or app.overlay is not None or game.turn != HUMAN:
+    if not game or app.overlay is not None or game.turn != HUMAN:
         return None
-    if not HAND_Y - LIFT <= y <= HAND_Y + HAND_H:
-        return None
-    total = (len(hand) - 1) * HAND_STEP + HAND_W
-    start = CENTER_X - total / 2
-    if not start <= x <= start + total:
-        return None
-    return min(int((x - start) // HAND_STEP), len(hand) - 1)
+    return hand_slot_at(x, y, len(game.hands[HUMAN]))
 
 
 def on_motion(app, x, y):
-    index = hand_slot_at(app, x, y)
+    index = pointed_card(app, x, y)
     if index == app.hovered:
         return
     for slot, lift in ((app.hovered, HOVER_LIFT), (index, -HOVER_LIFT)):

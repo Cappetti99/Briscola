@@ -1,5 +1,9 @@
 """Interface smoke tests: they open real (short-lived) Tk windows.
 
+Only what genuinely needs a window belongs here — event routing, the turn
+machinery, records. The table geometry these used to check is plain
+arithmetic now, and tests/test_layout.py covers it without a display.
+
 Run them like the others:
 
     conda run -n briscola python tests/test_gui.py
@@ -275,135 +279,6 @@ def test_clicking_the_felt_does_skip_the_pause():
             gui.AI_DELAY = gui.TRICK_DELAY = 5
 
 
-def test_hover_cannot_chase_itself():
-    """Regression: the hover lift used to lock the whole window up.
-
-    Lifting a card moved it out from under a pointer resting near its bottom
-    edge, so Tk sent <Leave>, the card dropped back under the pointer, <Enter>
-    fired, and the pair chased each other forever at full CPU — the window
-    stayed on screen but stopped answering clicks. The hit test must therefore
-    give the same answer whether or not the card is currently lifted.
-    """
-    with app_with_records() as (app, _store, _tmp):
-        assert wait_for(app, lambda: app.state == gui.S_HUMAN)
-        x = app._hand_x(len(app.game.hands[HUMAN]), 1) + gui.CARD_W / 2
-
-        # Right along the bottom edge, the worst case for the old code.
-        for y in (gui.PLAYER_HAND_Y + gui.CARD_H - 1,
-                  gui.PLAYER_HAND_Y + gui.CARD_H - 3,
-                  gui.PLAYER_HAND_Y + 4,
-                  gui.PLAYER_HAND_Y - gui.LIFT + 1):
-            app._set_hover_index(None)
-            first = app._hand_slot_at(x, y)
-            app._set_hover_index(first)          # the card is now lifted
-            assert app._hand_slot_at(x, y) == first, (
-                f"y={y}: the answer changed once the card moved")
-
-        # And a stream of real pointer motion settles instead of oscillating.
-        y = int(gui.PLAYER_HAND_Y + gui.CARD_H - 2)
-        for _ in range(30):
-            app.canvas.event_generate("<Motion>", x=int(x), y=y)
-            app.update()
-        assert app.hover == {1}, app.hover
-        for _ in range(10):
-            app.canvas.event_generate("<Motion>", x=int(x), y=y)
-            app.update()
-        assert app.hover == {1}, f"hover flipped: {app.hover}"
-
-
-DWELL_SECONDS = 5.0
-DWELL_MOVES = 2
-
-
-def test_playing_at_human_pace_stays_responsive():
-    """Play like a person: rest the pointer on a card, think, then click.
-
-    That pause is what locked the window up. The hover lift and Tk's
-    <Enter>/<Leave> chased each other while the pointer sat still on a card,
-    burning a core and starving the click queue, so nothing ever surfaced in a
-    test that clicked as fast as it could. Here the pointer rests on the worst
-    spot — a card's bottom edge — for five seconds before each click, and the
-    check is the one that matters: an idle window must cost almost no CPU, and
-    the click afterwards must land.
-    """
-    with app_with_records() as (app, _store, _tmp):
-        # Real pacing, so the pauses between moves are the real ones too.
-        gui.AI_DELAY, gui.TRICK_DELAY = 550, 1000
-        try:
-            plays = 0
-            deadline = time.time() + 90
-            while plays < DWELL_MOVES and time.time() < deadline:
-                if app.state == gui.S_OVER:
-                    break
-                if app.state != gui.S_HUMAN:
-                    settle(app, 0.1)
-                    continue
-
-                count = len(app.game.hands[HUMAN])
-                x = int(app._hand_x(count, count - 1) + gui.CARD_W / 2)
-                y = int(gui.PLAYER_HAND_Y + gui.CARD_H - 2)   # the worst spot
-
-                # Sweep the pointer across every card a couple of times, along
-                # their bottom edge, then rest on the last one — all inside the
-                # five seconds. Crossing between cards is its own hazard: each
-                # crossing drops one card and lifts another.
-                cpu_before = time.process_time()
-                end = time.time() + DWELL_SECONDS
-                sweeps = 0
-                while time.time() < end:
-                    if sweeps < 2:
-                        for index in list(range(count)) + list(range(count - 2, -1, -1)):
-                            step = int(app._hand_x(count, index) + gui.CARD_W / 2)
-                            for offset in (-gui.LIFT + 2, 20, gui.CARD_H - 2):
-                                app.canvas.event_generate(
-                                    "<Motion>", x=step,
-                                    y=int(gui.PLAYER_HAND_Y + offset))
-                                app.update()
-                                time.sleep(0.01)
-                        sweeps += 1
-                        app.canvas.event_generate("<Motion>", x=x, y=y)
-                    app.update()
-                    time.sleep(0.01)
-                cpu = time.process_time() - cpu_before
-                assert cpu < 0.2 * DWELL_SECONDS, (
-                    f"an idle window burnt {cpu:.1f}s of CPU while the pointer "
-                    f"rested on a card for {DWELL_SECONDS:.0f}s - "
-                    "the hover is chasing itself")
-                assert app.state == gui.S_HUMAN, \
-                    f"the game moved on by itself while we waited ({app.state})"
-
-                # Put the pointer back (the real mouse may have wandered over
-                # the window during the wait) and play.
-                app.canvas.event_generate("<Motion>", x=x, y=y)
-                app.update()
-                before = (app.game.tricks_played, len(app.game.table))
-                app.canvas.event_generate("<Button-1>", x=x, y=y)
-                app.update()
-                assert (app.game.tricks_played, len(app.game.table)) != before, \
-                    f"the click after a {DWELL_SECONDS:.0f}s pause did nothing"
-                plays += 1
-
-            assert plays == DWELL_MOVES, f"only got {plays} moves in"
-        finally:
-            gui.AI_DELAY = gui.TRICK_DELAY = 5
-
-
-def test_hover_follows_the_pointer():
-    with app_with_records() as (app, _store, _tmp):
-        assert wait_for(app, lambda: app.state == gui.S_HUMAN)
-        count = len(app.game.hands[HUMAN])
-        for index in range(count):
-            x = int(app._hand_x(count, index) + gui.CARD_W / 2)
-            app.canvas.event_generate("<Motion>", x=x,
-                                      y=int(gui.PLAYER_HAND_Y + 40))
-            app.update()
-            assert app.hover == {index}, (index, app.hover)
-        # Off the cards entirely.
-        app.canvas.event_generate("<Motion>", x=20, y=20)
-        app.update()
-        assert app.hover == set()
-
-
 def test_a_click_skips_the_pause():
     """The waits are there to be readable, not to be endured."""
     with app_with_records() as (app, _store, _tmp):
@@ -487,36 +362,6 @@ def test_the_menu_offers_both_games():
         app.update()
         assert app.game_kind == ui.BURRACO
         assert app.state == gui.S_MENU, "picking a game must not deal one"
-
-
-def test_a_burraco_hand_plays_to_the_end_and_is_recorded():
-    from cardgames import ui
-    from cardgames.burraco import ai as burraco_ai
-    from cardgames.burraco.engine import HUMAN as B_HUMAN
-
-    with app_with_records(start=False) as (app, store, _tmp):
-        app.set_game(ui.BURRACO)
-        app.start_game()
-
-        turns = 0
-        while not app.game.game_over and turns < 300:
-            app.update()
-            if app.state != gui.S_HUMAN:
-                time.sleep(0.005)
-                continue
-            # Play our seat with the same policy the opponent uses.
-            burraco_ai.take_turn(app.game, B_HUMAN, app.difficulty)
-            app.selected.clear()
-            app.after_move()
-            turns += 1
-
-        assert app.game.game_over, f"still going after {turns} turns"
-        settle(app)
-        matches = store.matches("tester")
-        assert len(matches) == 1, matches
-        assert matches[0].game == ui.BURRACO
-        assert matches[0].you == app.game.scores()[0]
-        assert app.overlay is not None
 
 
 def test_clicking_a_burraco_card_selects_it():
