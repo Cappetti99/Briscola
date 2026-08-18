@@ -764,13 +764,17 @@ class BriscolaApp(tk.Tk):
                       text=LEVEL_BLURBS[self.difficulty],
                       fill=TEXT_DIM, font=ui.font(11))
 
-        self._button(left, 622, MENU_COL_W, 42, "Start game", "menu_start",
-                     self.start_game, primary=True, font_size=15)
+        # The buttons follow the difficulty row rather than sitting at a fixed
+        # height: Burraco adds a row above them, and a fixed height put the
+        # Start button straight on top of the difficulty pills.
+        start_top = difficulty_top + 82
+        self._button(left, start_top, MENU_COL_W, 42, "Start game",
+                     "menu_start", self.start_game, primary=True, font_size=15)
         half = (MENU_COL_W - 10) / 2
-        self._button(left, 676, half, 30, "Statistics", "menu_stats",
-                     self.show_statistics)
-        self._button(left + half + 10, 676, half, 30, "Rules", "menu_rules",
-                     self.show_rules)
+        self._button(left, start_top + 52, half, 30, "Statistics",
+                     "menu_stats", self.show_statistics)
+        self._button(left + half + 10, start_top + 52, half, 30, "Rules",
+                     "menu_rules", self.show_rules)
 
         c.create_text(MENU_CX, WIN_H - 26,
                       text="Enter = start    D = difficulty    "

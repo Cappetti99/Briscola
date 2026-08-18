@@ -829,6 +829,49 @@ def test_a_scaled_window_still_puts_clicks_on_the_right_card():
         assert box[2] - box[0] > layout.HAND_W, "a scaled card is wider"
 
 
+def test_no_two_menu_controls_overlap():
+    """Burraco adds a row to the menu, and the buttons have to move down.
+
+    They did not: the Start button was pinned to a fixed height and came down
+    on top of the difficulty pills, which is what the menu looked like.
+    """
+    from cardgames import ui
+
+    def boxes(app):
+        found = {}
+        for key, (rect, _command) in app._buttons.items():
+            found[key] = app.canvas.bbox(rect)
+        return found
+
+    with app_with_records(start=False) as (app, _store, _tmp):
+        for game in ui.GAMES:
+            app.set_game(game)
+            app.update()
+            placed = boxes(app)
+            names = sorted(placed)
+            for first in names:
+                for second in names:
+                    if first >= second:
+                        continue
+                    a, b = placed[first], placed[second]
+                    apart = (a[2] <= b[0] or b[2] <= a[0]
+                             or a[3] <= b[1] or b[3] <= a[1])
+                    assert apart, f"{game}: {first} overlaps {second}"
+
+
+def test_the_menu_fits_the_window():
+    from cardgames import ui
+
+    with app_with_records(start=False) as (app, _store, _tmp):
+        for game in ui.GAMES:
+            app.set_game(game)
+            app.update()
+            for key, (rect, _command) in app._buttons.items():
+                box = app.canvas.bbox(rect)
+                assert box[3] <= ui.WIN_H, f"{game}: {key} runs off the bottom"
+                assert box[0] >= 0 and box[2] <= ui.WIN_W, f"{game}: {key}"
+
+
 if __name__ == "__main__":
     failures = 0
     for name, fn in sorted(globals().items()):
