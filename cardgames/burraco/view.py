@@ -9,7 +9,8 @@ from ..cards import Card
 from ..ui import (ACCENT, CONTENT_W, CONTENT_X, FELT, FELT_DARK, FELT_EDGE,
                   PANEL_BG, PANEL_CARD, TABLE_H, TABLE_W, TEXT, TEXT_DIM)
 from . import ai as burraco_ai
-from .engine import AI, HUMAN, InvalidMeld, is_wild, wild_stands_for
+from .engine import (AI, HUMAN, InvalidMeld, Stranded, is_wild,
+                     wild_stands_for)
 
 # Card sizes: hands are eleven cards or more, so they are smaller than in
 # Briscola and they overlap.
@@ -300,7 +301,7 @@ def click_meld(app, index):
     # quietly pulled the wild out of it.
     try:
         game.extend_meld(HUMAN, meld, cards)
-    except (InvalidMeld, RuntimeError) as exc:
+    except (InvalidMeld, Stranded, RuntimeError) as exc:
         app.say(str(exc))
         return
     app.note(f"You add {len(cards)} card(s) to a {meld.kind}")
@@ -355,6 +356,9 @@ def click_action(app, key):
         elif key == "end":
             game.end_turn(HUMAN)
             app.note("You end the turn with an empty hand")
+    except Stranded as exc:
+        app.say(str(exc).capitalize() + ".")
+        return
     except InvalidMeld as exc:
         app.say(f"Not a meld: {exc}")
         return

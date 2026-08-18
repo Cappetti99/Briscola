@@ -9,7 +9,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from cardgames.burraco.engine import (AI, BURRACO_CLEAN, BURRACO_DIRTY,
                                       CARD_POINTS, CLOSING_BONUS, HAND_SIZE,
                                       HUMAN, POT_NOT_TAKEN, POT_SIZE, Game,
-                                      InvalidMeld, Meld, RUN, SET, build_meld,
+                                      InvalidMeld, Meld, RUN, SET, Stranded,
+                                      build_meld,
                                       can_extend, is_wild, order_meld,
                                       the_wild, wild_stands_for)
 from cardgames.cards import (ACE, JOKER_RANK, KING, QUEEN, SUITS, Card,
@@ -357,15 +358,23 @@ def test_laying_down_your_last_cards_takes_the_pot():
     assert len(game.hands[HUMAN]) == POT_SIZE
 
 
-def test_an_empty_hand_can_end_the_turn_without_discarding():
+def test_closing_is_the_only_way_a_turn_ends_with_an_empty_hand():
+    """With the pot already taken, running out has to mean closing.
+
+    This used to be a test that a player could empty their hand and simply
+    end the turn. That is exactly what the rules forbid, so what it really
+    documented was a hole: a player could strand themselves mid-hand with
+    nothing to discard and no way to go on.
+    """
     game = Game(seed=5, first_player=HUMAN)
     game.draw(HUMAN)
     game.pot_taken[HUMAN] = True
+    game.melds[HUMAN] = [seven_run("Clubs")]
     game.hands[HUMAN] = [Card(5, "Hearts"), Card(6, "Hearts"), Card(7, "Hearts")]
+
     game.lay_meld(HUMAN, list(game.hands[HUMAN]))
     assert game.hands[HUMAN] == []
-    game.end_turn(HUMAN)
-    assert game.turn == AI
+    assert game.closed_by == HUMAN and game.game_over
 
 
 # --- the computer plays ---------------------------------------------------
@@ -501,6 +510,96 @@ def test_the_wild_is_named_correctly_in_each_kind():
                            Card(7, "Hearts")])
     assert the_wild(with_two) == Card(2, "Clubs")
     assert the_wild(seven_run()) is None, "nothing wild in a clean run"
+
+
+def test_you_cannot_meld_your_way_to_an_empty_hand_without_a_burraco():
+    game = Game(seed=1, first_player=HUMAN)
+    game.draw(HUMAN)
+    game.pot_taken[HUMAN] = True                 # the pot is already spent
+    game.hands[HUMAN] = [Card(5, "Hearts"), Card(6, "Hearts"),
+                         Card(7, "Hearts")]
+    try:
+        game.lay_meld(HUMAN, list(game.hands[HUMAN]))
+    except Stranded:
+        pass
+    else:
+        raise AssertionError("that would leave nothing to discard")
+    assert len(game.hands[HUMAN]) == 3, "the refused meld leaves the hand alone"
+    assert game.melds[HUMAN] == []
+
+
+def test_nor_down_to_a_single_card():
+    """One card is as stuck as none: the discard that follows would empty it."""
+    game = Game(seed=1, first_player=HUMAN)
+    game.draw(HUMAN)
+    game.pot_taken[HUMAN] = True
+    game.hands[HUMAN] = [Card(5, "Hearts"), Card(6, "Hearts"),
+                         Card(7, "Hearts"), Card(KING, "Clubs")]
+    try:
+        game.lay_meld(HUMAN, [Card(5, "Hearts"), Card(6, "Hearts"),
+                              Card(7, "Hearts")])
+    except Stranded:
+        pass
+    else:
+        raise AssertionError("one card left is one card too few")
+
+
+def test_you_cannot_discard_your_last_card_without_a_burraco():
+    game = Game(seed=1, first_player=HUMAN)
+    game.draw(HUMAN)
+    game.pot_taken[HUMAN] = True
+    game.hands[HUMAN] = [Card(KING, "Clubs")]
+    try:
+        game.discard(HUMAN, Card(KING, "Clubs"))
+    except Stranded:
+        pass
+    else:
+        raise AssertionError("closing without a burraco is not closing")
+    assert game.closed_by is None
+
+
+def test_but_you_may_empty_your_hand_to_take_the_pot():
+    game = Game(seed=1, first_player=HUMAN)
+    game.draw(HUMAN)
+    assert not game.pot_taken[HUMAN]
+    game.hands[HUMAN] = [Card(5, "Hearts"), Card(6, "Hearts"),
+                         Card(7, "Hearts")]
+    game.lay_meld(HUMAN, list(game.hands[HUMAN]))
+    assert game.pot_taken[HUMAN], "the first time out earns the pot"
+    assert len(game.hands[HUMAN]) == POT_SIZE
+
+
+def test_and_you_may_empty_it_to_close_with_a_burraco():
+    game = Game(seed=1, first_player=HUMAN)
+    game.draw(HUMAN)
+    game.pot_taken[HUMAN] = True
+    game.melds[HUMAN] = [seven_run("Clubs")]
+    game.hands[HUMAN] = [Card(5, "Hearts"), Card(6, "Hearts"),
+                         Card(7, "Hearts")]
+    game.lay_meld(HUMAN, list(game.hands[HUMAN]))
+    assert game.closed_by == HUMAN
+    assert game.game_over
+
+
+def test_the_computer_never_strands_itself():
+    import random
+
+    from cardgames.burraco import ai as burraco_ai
+
+    for seed in range(25):
+        game = Game(seed=seed)
+        rng = random.Random(seed)
+        turns = 0
+        while not game.game_over and turns < 300:
+            burraco_ai.take_turn(game, game.turn, rng=rng)
+            turns += 1
+            for player in (HUMAN, AI):
+                if game.game_over:
+                    continue
+                assert game.hands[player], (
+                    f"seed {seed}: player {player} left with no cards "
+                    "and the hand still going")
+        assert game.game_over, f"seed {seed}: never finished"
 
 
 if __name__ == "__main__":

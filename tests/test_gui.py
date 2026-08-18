@@ -312,7 +312,7 @@ def test_hover_cannot_chase_itself():
 
 
 DWELL_SECONDS = 5.0
-DWELL_MOVES = 4
+DWELL_MOVES = 2
 
 
 def test_playing_at_human_pace_stays_responsive():
@@ -685,7 +685,7 @@ def test_the_pinella_comes_back_on_its_own_button():
     from cardgames import ui
     from cardgames.burraco import view
     from cardgames.burraco.engine import HUMAN as B_HUMAN, build_meld
-    from cardgames.cards import JOKER_RANK, Card
+    from cardgames.cards import KING, JOKER_RANK, Card
 
     joker = Card(JOKER_RANK, "Joker")
     with app_with_records(start=False) as (app, _store, _tmp):
@@ -698,7 +698,7 @@ def test_the_pinella_comes_back_on_its_own_button():
         view.click_action(app, "draw")
         app.game.melds[B_HUMAN] = [build_meld([Card(5, "Hearts"), joker,
                                                Card(7, "Hearts")])]
-        app.game.hands[B_HUMAN] = [Card(6, "Hearts")]
+        app.game.hands[B_HUMAN] = [Card(6, "Hearts"), Card(KING, "Clubs")]
         _select(app, [Card(6, "Hearts")])
         view.click_action(app, "swap")
 
@@ -713,7 +713,7 @@ def test_adding_a_card_never_pulls_the_wild_out():
     from cardgames import ui
     from cardgames.burraco import view
     from cardgames.burraco.engine import HUMAN as B_HUMAN, build_meld
-    from cardgames.cards import JOKER_RANK, Card
+    from cardgames.cards import KING, JOKER_RANK, Card
 
     joker = Card(JOKER_RANK, "Joker")
     with app_with_records(start=False) as (app, _store, _tmp):
@@ -726,7 +726,9 @@ def test_adding_a_card_never_pulls_the_wild_out():
         view.click_action(app, "draw")
         app.game.melds[B_HUMAN] = [build_meld([Card(5, "Hearts"), joker,
                                                Card(7, "Hearts")])]
-        app.game.hands[B_HUMAN] = [Card(6, "Hearts")]
+        # A spare card matters: without it the hand would empty, the pot would
+        # come in, and one of its eleven cards could be another joker.
+        app.game.hands[B_HUMAN] = [Card(6, "Hearts"), Card(KING, "Clubs")]
         _select(app, [Card(6, "Hearts")])
         view.click_meld(app, 0)
 

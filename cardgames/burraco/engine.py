@@ -52,6 +52,16 @@ class InvalidMeld(Exception):
     """Raised when cards cannot legally sit together on the table."""
 
 
+class Stranded(Exception):
+    """Raised by a move that would leave a player with nothing to play.
+
+    Running out of cards is only allowed when it means something: the first
+    time it earns the pot, and after that it closes the hand — which needs a
+    burraco. Any other way of emptying your hand would leave you unable to
+    discard and unable to end your turn, so it is refused before it happens.
+    """
+
+
 @dataclass
 class Meld:
     """Cards on the table, as a set of equal ranks or a run in one suit."""
@@ -398,7 +408,12 @@ class Game:
         except InvalidMeld:
             self.hands[player].extend(cards)      # put them back, unchanged
             raise
+
         self.melds[player].append(meld)
+        if self._strands(player):
+            self.melds[player].pop()              # undo: the hand is unchanged
+            self.hands[player].extend(cards)
+            raise Stranded(self._stranded_reason(player))
         self._after_hand_shrinks(player)
         return meld
 
@@ -413,7 +428,13 @@ class Game:
         except InvalidMeld:
             self.hands[player].extend(cards)
             raise
+        before = (meld.cards, meld.kind, meld.wilds)
         meld.cards, meld.kind, meld.wilds = grown.cards, grown.kind, grown.wilds
+        if self._strands(player):
+            meld.cards, meld.kind, meld.wilds = before
+            self.hands[player].extend(cards)
+            raise Stranded(self._stranded_reason(player))
+        self._after_hand_shrinks(player)
         return meld
 
     def substitute_wild(self, player: int, meld: Meld, card: Card) -> Card:
@@ -441,6 +462,8 @@ class Game:
     def discard(self, player: int, card: Card) -> None:
         self._check_turn(player)
         self._require_drawn()
+        if len(self.hands[player]) == 1 and not self._may_empty(player):
+            raise Stranded(self._stranded_reason(player))
         self._take_from_hand(player, [card])
         self.discards.append(card)
         self._after_hand_shrinks(player)
@@ -475,6 +498,20 @@ class Game:
             self.pot_taken[player] = True
         elif self.may_close(player):
             self.closed_by = player
+
+    def _may_empty(self, player: int) -> bool:
+        """Whether running out of cards would mean something right now."""
+        return not self.pot_taken[player] or self.may_close(player)
+
+    def _strands(self, player: int) -> bool:
+        """A hand of one is as stuck as a hand of none: the discard follows."""
+        return len(self.hands[player]) <= 1 and not self._may_empty(player)
+
+    def _stranded_reason(self, player: int) -> str:
+        if not self.has_burraco(player):
+            return ("you cannot be left without cards: closing needs a "
+                    "burraco, and you have none")
+        return "you cannot be left without cards"
 
     # --- tidying ----------------------------------------------------------
 

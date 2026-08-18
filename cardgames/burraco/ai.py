@@ -4,7 +4,8 @@ import random
 
 from ..cards import RANKS, SUITS, Card
 from .engine import (AI, MIN_MELD, CARD_POINTS, Game, InvalidMeld, Meld,
-                     build_meld, can_extend, is_wild, wild_stands_for)
+                     Stranded, build_meld, can_extend, is_wild,
+                     wild_stands_for)
 
 EASY, NORMAL = "easy", "normal"
 LEVELS = (EASY, NORMAL)
@@ -124,14 +125,14 @@ def _meld_phase(game: Game, player: int, level: str) -> list[str]:
             if can_extend(meld, card):
                 try:
                     game.extend_meld(player, meld, [card])
-                except InvalidMeld:
-                    continue
+                except (InvalidMeld, Stranded):
+                    continue        # it would leave nothing to discard
                 moves.append(f"adds {card} to a {meld.kind}")
 
     for cards in _find_melds(list(game.hands[player]), greedy_wilds=level != EASY):
         try:
             meld = game.lay_meld(player, cards)
-        except (InvalidMeld, RuntimeError):
+        except (InvalidMeld, RuntimeError, Stranded):
             continue
         moves.append(f"lays down a {meld.kind} of {len(meld)}")
     return moves
