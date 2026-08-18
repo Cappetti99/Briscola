@@ -141,10 +141,11 @@ find and hard to discard by accident.
 
 A Burraco hand grows: eleven cards, plus a pot of eleven, plus whatever a
 taken discard pile adds. The fan tightens as it fills so that it always fits
-the table — at a fixed spacing, seventeen cards already spanned 1010 pixels of
-a 940 pixel table and the ones on the ends could be neither seen nor clicked.
-Past twenty-eight cards, tightening alone is not enough and the hand scrolls
-instead, with the mouse wheel or the arrows at either end.
+the table, with a clear margin at both ends — at a fixed spacing, seventeen
+cards already spanned 1010 pixels of a 940 pixel table and the ones on the
+ends could be neither seen nor clicked. Past twenty-five cards, tightening
+alone is not enough and the hand scrolls instead, with the mouse wheel or the
+arrows at either end.
 
 Melds keep the order they are meant to be read in. A run reads along the
 sequence with the wild card sitting in the hole it fills — `5 · joker · 7`, not

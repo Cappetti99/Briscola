@@ -11,7 +11,9 @@ HAND_W, HAND_H = 82, 124
 # The fan tightens as the hand grows, down to a floor that still leaves a
 # strip wide enough to read a card's corner and to click it. Past the point
 # where even that floor no longer fits the table, the hand scrolls.
-HAND_MARGIN = 24
+# Kept well clear of the window edge and of the panel: at a hairline margin
+# the fan reads as though it were spilling out of the table.
+HAND_MARGIN = 56
 HAND_STEP_MAX = 58
 HAND_STEP_MIN = 30
 LIFT = 20
@@ -27,7 +29,7 @@ OPP_HAND_Y = 16
 OPP_MELD_Y = 128
 STOCK_Y = 310
 YOUR_MELD_Y = 420
-HAND_Y = 616
+HAND_Y = 606
 STOCK_X = 44
 MELD_X0 = 240
 PILE_X = STOCK_X + 104

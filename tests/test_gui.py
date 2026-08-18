@@ -583,6 +583,44 @@ def test_adding_a_card_never_pulls_the_wild_out():
         assert len(meld) == 4
 
 
+def test_moving_the_pointer_lifts_a_burraco_card():
+    """The Burraco table has its own hover, and nothing was exercising it.
+
+    A refactor deleted the handler outright and every suite stayed green: Tk
+    prints the resulting error to stderr and carries on, so a hover that does
+    nothing looks exactly like a hover that works.
+    """
+    from cardgames import ui
+    from cardgames.burraco import layout, view
+    from cardgames.burraco.engine import HUMAN as B_HUMAN
+
+    with app_with_records(start=False) as (app, _store, _tmp):
+        app.set_game(ui.BURRACO)
+        app.start_game()
+        assert wait_for(app, lambda: app.state == gui.S_HUMAN)
+
+        count = len(app.game.hands[B_HUMAN])
+        step = layout.hand_step(count)
+        x = int(layout.hand_x(count, 2) + step / 2)
+        y = int(layout.HAND_Y + 40)
+
+        app.canvas.event_generate("<Motion>", x=x, y=y)
+        app.update()
+        assert app.hovered == 2, f"hovered {app.hovered} instead of 2"
+
+        # And the card actually moves up on the canvas.
+        lifted = app.canvas.bbox("hand2")
+        app.canvas.event_generate("<Motion>", x=10, y=10)
+        app.update()
+        assert app.hovered is None
+        resting = app.canvas.bbox("hand2")
+        assert lifted[1] < resting[1], "the lifted card sits higher"
+
+        # One card is enough here: this is about the events reaching the view.
+        # Walking the pointer over every card of every hand size is geometry,
+        # and tests/test_layout.py does it exhaustively without a window.
+
+
 if __name__ == "__main__":
     failures = 0
     for name, fn in sorted(globals().items()):

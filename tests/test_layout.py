@@ -94,10 +94,16 @@ def test_a_big_hand_never_runs_off_the_table():
 
 def test_the_fan_tightens_before_it_scrolls():
     assert burraco.hand_step(11) == burraco.HAND_STEP_MAX, "a small hand is airy"
-    assert burraco.hand_step(22) < burraco.HAND_STEP_MAX, "a big one tightens"
-    assert burraco.hand_step(40) == burraco.HAND_STEP_MIN, "down to the floor"
-    assert burraco.visible_slots(22) == 22, "and only then does it scroll"
-    assert burraco.visible_slots(40) < 40
+
+    steps = [burraco.hand_step(count) for count in range(1, 41)]
+    for wider, tighter in zip(steps, steps[1:]):
+        assert tighter <= wider, "the fan only ever closes up"
+    assert min(steps) >= burraco.HAND_STEP_MIN, "and never past the floor"
+
+    # Scrolling is the last resort: it starts only once tightening has run out.
+    scrolls_at = next(n for n in range(1, 41) if burraco.visible_slots(n) < n)
+    assert burraco.hand_step(scrolls_at) < burraco.HAND_STEP_MIN + 3
+    assert burraco.visible_slots(scrolls_at - 1) == scrolls_at - 1
 
 
 def test_the_pointer_finds_each_card_of_a_full_burraco_hand():
@@ -203,6 +209,7 @@ def test_a_meld_shows_enough_of_each_card_to_read_it():
     assert burraco.MELD_VSTEP >= 14, "a run must show its corner index"
     assert burraco.MELD_STEP >= 18, "and a set must show its rank"
     assert burraco.HAND_STEP_MIN >= 28, "a hand card must stay clickable"
+    assert burraco.HAND_MARGIN >= 40, "and the fan must not touch the edges"
 
 
 if __name__ == "__main__":

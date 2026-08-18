@@ -165,6 +165,26 @@ def _draw_scroll_arrows(app, count):
                        fill=TEXT_DIM, font=("Helvetica", 10))
 
 
+def pointed_card(app, x, y):
+    """The card under the pointer, once the window agrees we may pick one."""
+    game = app.game
+    if not game or app.overlay is not None or game.turn != HUMAN:
+        return None
+    return hand_slot_at(x, y, len(game.hands[HUMAN]), app.hand_first)
+
+
+def on_motion(app, x, y):
+    """Lift the card under the pointer, and put the last one back down."""
+    index = pointed_card(app, x, y)
+    if index == app.hovered:
+        return
+    for slot, lift in ((app.hovered, HOVER_LIFT), (index, -HOVER_LIFT)):
+        if slot is not None and slot not in app.selected:
+            app.canvas.move(f"hand{slot}", 0, lift)
+    app.hovered = index
+    app.canvas.config(cursor="hand2" if index is not None else "")
+
+
 def sort_hand(app, by):
     """Put the hand in order and forget the selection, which moved with it."""
     app.sort_mode = by
