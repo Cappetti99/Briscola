@@ -726,6 +726,25 @@ def test_reading_the_opponent_from_the_public_record():
     assert burraco_ai.reading_of_opponent(game, HUMAN, Card(KING, "Clubs")) == 0
 
 
+def test_reading_what_the_opponent_is_building():
+    """The melds they hold and the ranks they gather are both public."""
+    from cardgames.burraco import ai as burraco_ai
+
+    game = Game(seed=5, first_player=HUMAN)
+    game.melds[AI] = [build_meld([Card(5, "Hearts"), Card(6, "Hearts"),
+                                  Card(7, "Hearts")])]
+    game.taken[AI] = [Card(9, "Clubs")]
+
+    # A card that walks onto their run is worth more to them than a stray one.
+    onto_meld = burraco_ai.opponent_interest(game, HUMAN, [Card(8, "Hearts")])
+    gathered = burraco_ai.opponent_interest(game, HUMAN, [Card(9, "Spades")])
+    stray = burraco_ai.opponent_interest(game, HUMAN, [Card(KING, "Diamonds")])
+    assert onto_meld > gathered > stray == 0
+
+    # A wild card is worth having whatever else is going on.
+    assert burraco_ai.opponent_interest(game, HUMAN, [JOKER]) > 0
+
+
 if __name__ == "__main__":
     failures = 0
     for name, fn in sorted(globals().items()):

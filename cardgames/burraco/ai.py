@@ -25,6 +25,18 @@ LEVEL_LABELS = {EASY: "Easy", NORMAL: "Normal"}
 PILE_MIN_GAIN = 15
 PILE_COST = 0.25
 
+# Whether to weigh what the pile would be worth to the opponent as well as to
+# yourself. Off, and measured: over sixty deals with one seat denying and the
+# other not, then with the seats swapped, the denier took 48% and 50% of the
+# points and lost the matches 22-38 and 28-32. The reason is the same one that
+# sank every other attempt at cleverness here — cards taken for any reason
+# other than what they do for your own hand are a liability. They count
+# against you if they stay, and they put off the moment you can close.
+#
+# The switch stays so the two can be played against each other again when
+# there is something better to try.
+DENY = False
+
 # Past this many cards a hand is a burden: taking the pile only makes it worse.
 HAND_TOO_BIG = 16
 
@@ -97,7 +109,31 @@ def _pile_is_worth_taking(game: Game, player: int, level: str) -> bool:
     gain = _table_value(hand + pile, game, player) - _table_value(hand, game, player)
     # Every card taken is one more to get rid of, and a penalty if it sticks.
     cost = sum(CARD_POINTS[card.rank] for card in pile) * PILE_COST
-    return gain > cost + PILE_MIN_GAIN
+    denial = opponent_interest(game, player, pile) * DENIAL_WEIGHT if DENY else 0
+    return gain + denial > cost + PILE_MIN_GAIN
+
+
+DENIAL_WEIGHT = 0.6
+
+
+def opponent_interest(game: Game, player: int, cards: list[Card]) -> int:
+    """What these cards would be worth to the other player.
+
+    Built from what is public: the melds on their side of the table, and the
+    ranks their own discards and takes say they are collecting. Taking a pile
+    they want is worth something beyond what it does for your own hand.
+    """
+    other = 1 - player
+    worth = 0
+    for card in cards:
+        if is_wild(card):
+            worth += CARD_POINTS[card.rank]
+            continue
+        if any(can_extend(meld, card) for meld in game.melds[other]):
+            worth += CARD_POINTS[card.rank] + 10
+        elif reading_of_opponent(game, player, card) > 0:
+            worth += 5
+    return worth
 
 
 def _table_value(cards: list[Card], game: Game, player: int) -> int:
