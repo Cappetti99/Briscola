@@ -15,8 +15,9 @@ from .engine import (AI, HUMAN, InvalidMeld, Stranded, is_wild,
 from .layout import (BACK_H, BACK_STEP, BACK_W, CENTER_X, HAND_H, HAND_W,
                      HAND_Y, HOVER_LIFT, LIFT, MELD_H, MELD_W, MELD_X0,
                      OPP_HAND_Y, OPP_MELD_Y, PILE_X, STOCK_X, STOCK_Y,
-                     YOUR_MELD_Y, card_position, clamp_scroll, hand_slot_at,
-                     hand_x, meld_boxes, visible_range, visible_slots)
+                     OPP_MELD_ROOM, YOUR_MELD_ROOM, YOUR_MELD_Y,
+                     card_position, clamp_scroll, hand_slot_at, hand_x,
+                     meld_boxes, visible_range, visible_slots)
 
 ACTIONS = ("draw", "pile", "meld", "swap", "discard", "end")
 SORTS = ("suit", "rank")
@@ -36,7 +37,7 @@ def draw(app):
 
     _draw_opponent(app, game)
     _draw_stock(app, game)
-    _draw_melds(app, game, HUMAN, YOUR_MELD_Y)
+    _draw_melds(app, game, HUMAN, YOUR_MELD_Y, YOUR_MELD_ROOM)
     _draw_hand(app, game)
 
 
@@ -51,7 +52,7 @@ def _draw_opponent(app, game):
     canvas.create_text(TABLE_W - 12, OPP_HAND_Y + BACK_H / 2,
                        text=f"COMPUTER  {len(hand)} cards", anchor="e",
                        fill=FELT_EDGE, font=("Helvetica", 10, "bold"))
-    _draw_melds(app, game, AI, OPP_MELD_Y)
+    _draw_melds(app, game, AI, OPP_MELD_Y, OPP_MELD_ROOM)
 
 
 def _draw_stock(app, game):
@@ -83,7 +84,7 @@ def _draw_stock(app, game):
                                  color=ACCENT if taken else FELT_EDGE)
 
 
-def _draw_melds(app, game, player, top):
+def _draw_melds(app, game, player, top, room):
     """Sets read across, runs read down.
 
     A run standing up shows its corner index down one edge, which is the
@@ -97,19 +98,20 @@ def _draw_melds(app, game, player, top):
                            fill=FELT_EDGE, font=("Helvetica", 11))
         return
 
-    boxes = meld_boxes([meld.kind for meld in melds],
-                       [len(meld) for meld in melds], top)
+    boxes, scale = meld_boxes([meld.kind for meld in melds],
+                              [len(meld) for meld in melds], top, room)
     for index, (meld, box) in enumerate(zip(melds, boxes)):
         x, y, width, _height, _vertical = box
         tag = f"meld{player}_{index}"
         for offset, card in enumerate(meld.cards):
-            card_x, card_y = card_position(box, offset)
-            cardart.draw_card(canvas, card_x, card_y, MELD_W, MELD_H, card,
-                              tags=(tag,))
+            card_x, card_y = card_position(box, offset, scale)
+            cardart.draw_card(canvas, card_x, card_y,
+                              MELD_W * scale, MELD_H * scale, card, tags=(tag,))
         if meld.is_burraco:
-            canvas.create_text(x + width / 2, y - 9,
+            canvas.create_text(x + width / 2, y - 7,
                                text="BURRACO" + ("" if meld.is_clean else " *"),
-                               fill=ACCENT, font=("Helvetica", 9, "bold"))
+                               fill=ACCENT,
+                               font=("Helvetica", max(7, int(9 * scale)), "bold"))
         if player == HUMAN:
             canvas.tag_bind(tag, "<Button-1>",
                             lambda _e, i=index: click_meld(app, i))

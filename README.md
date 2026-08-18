@@ -147,6 +147,11 @@ ends could be neither seen nor clicked. Past twenty-five cards, tightening
 alone is not enough and the hand scrolls instead, with the mouse wheel or the
 arrows at either end.
 
+Melds stay inside their own band of the table: the cards shrink as the row
+fills so that a tableful never reaches down over the hand, where it could be
+neither read nor added to. They shrink only as far as they must, and never
+past the point of being readable.
+
 Melds keep the order they are meant to be read in. A run reads along the
 sequence with the wild card sitting in the hole it fills — `5 · joker · 7`, not
 `5 · 7 · joker` — and cards added later are folded into place rather than tacked

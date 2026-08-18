@@ -167,7 +167,7 @@ def test_an_empty_hand_has_no_slots():
 # --- melds on the table ---------------------------------------------------
 
 def test_runs_stand_up_and_sets_lie_down():
-    (run, other) = burraco.meld_boxes(["run", "set"], [5, 5], 400)
+    (run, other), _scale = burraco.meld_boxes(["run", "set"], [5, 5], 400)
     assert run[4] is True and other[4] is False
     assert run[2] == burraco.MELD_W, "a run is one card wide"
     assert run[3] > other[3], "and taller than a set of the same size"
@@ -176,7 +176,7 @@ def test_runs_stand_up_and_sets_lie_down():
 def test_meld_boxes_do_not_overlap():
     kinds = ["run", "set", "run", "set", "run"]
     sizes = [4, 3, 7, 5, 3]
-    boxes = burraco.meld_boxes(kinds, sizes, 400)
+    boxes, _scale = burraco.meld_boxes(kinds, sizes, 400)
     for first, second in zip(boxes, boxes[1:]):
         same_row = first[1] == second[1]
         if same_row:
@@ -184,7 +184,7 @@ def test_meld_boxes_do_not_overlap():
 
 
 def test_a_long_row_of_melds_wraps():
-    boxes = burraco.meld_boxes(["set"] * 8, [4] * 8, 400)
+    boxes, _scale = burraco.meld_boxes(["set"] * 8, [4] * 8, 400)
     rows = {box[1] for box in boxes}
     assert len(rows) > 1, "eight melds cannot fit on one row"
     for box in boxes:
@@ -192,13 +192,13 @@ def test_a_long_row_of_melds_wraps():
 
 
 def test_cards_in_a_meld_step_the_right_way():
-    box = burraco.meld_boxes(["run"], [4], 400)[0]
+    box = burraco.meld_boxes(["run"], [4], 400)[0][0]
     first = burraco.card_position(box, 0)
     second = burraco.card_position(box, 1)
     assert first[0] == second[0], "a run steps downward"
     assert second[1] > first[1]
 
-    box = burraco.meld_boxes(["set"], [4], 400)[0]
+    box = burraco.meld_boxes(["set"], [4], 400)[0][0]
     first = burraco.card_position(box, 0)
     second = burraco.card_position(box, 1)
     assert first[1] == second[1], "a set steps sideways"
@@ -210,6 +210,59 @@ def test_a_meld_shows_enough_of_each_card_to_read_it():
     assert burraco.MELD_STEP >= 18, "and a set must show its rank"
     assert burraco.HAND_STEP_MIN >= 28, "a hand card must stay clickable"
     assert burraco.HAND_MARGIN >= 40, "and the fan must not touch the edges"
+
+
+def feasible_tableaus():
+    """Every spread of melds that 108 cards could actually make."""
+    for size in range(3, 15):
+        for count in range(1, 108 // size + 1):
+            for kind in ("set", "run"):
+                yield kind, count, size
+
+
+def test_melds_never_reach_the_hand():
+    """Cards under the hand can be neither read nor added to.
+
+    A long row of melds wrapped downward with no limit: ten melds of five ran
+    to y=664 with the hand starting at 606, so the last row was buried.
+    """
+    for kind, count, size in feasible_tableaus():
+        boxes, scale = burraco.meld_boxes([kind] * count, [size] * count,
+                                          burraco.YOUR_MELD_Y,
+                                          burraco.YOUR_MELD_ROOM)
+        bottom = max(box[1] + box[3] for box in boxes)
+        assert bottom <= burraco.HAND_Y, (kind, count, size, bottom, scale)
+
+
+def test_the_opponents_melds_stay_off_the_stock():
+    for kind, count, size in feasible_tableaus():
+        boxes, scale = burraco.meld_boxes([kind] * count, [size] * count,
+                                          burraco.OPP_MELD_Y,
+                                          burraco.OPP_MELD_ROOM)
+        bottom = max(box[1] + box[3] for box in boxes)
+        assert bottom <= burraco.STOCK_Y, (kind, count, size, bottom, scale)
+
+
+def test_melds_shrink_only_as_much_as_they_must():
+    _few, roomy = burraco.meld_boxes(["set"] * 3, [4] * 3,
+                                     burraco.YOUR_MELD_Y,
+                                     burraco.YOUR_MELD_ROOM)
+    assert roomy == 1.0, "a few melds are drawn full size"
+
+    _many, tight = burraco.meld_boxes(["set"] * 16, [5] * 16,
+                                      burraco.YOUR_MELD_Y,
+                                      burraco.YOUR_MELD_ROOM)
+    assert tight < 1.0, "a tableful shrinks"
+    assert tight >= burraco.MELD_SCALE_MIN, "but never past the floor"
+
+
+def test_cards_of_a_shrunken_meld_still_step_apart():
+    boxes, scale = burraco.meld_boxes(["run"] * 16, [7] * 16,
+                                      burraco.YOUR_MELD_Y,
+                                      burraco.YOUR_MELD_ROOM)
+    first = burraco.card_position(boxes[0], 0, scale)
+    second = burraco.card_position(boxes[0], 1, scale)
+    assert second[1] - first[1] >= 8, "a shrunken run must still be readable"
 
 
 if __name__ == "__main__":

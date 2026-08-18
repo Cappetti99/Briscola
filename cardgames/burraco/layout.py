@@ -103,31 +103,62 @@ def hand_slot_at(x: float, y: float, count: int,
     return first + min(int((x - start) // step), shown - 1)
 
 
-def meld_boxes(kinds: list[str], sizes: list[int], top: float) -> list[tuple]:
-    """Place a row of melds: (x, y, width, height, vertical) for each.
+# Melds may not grow past their band: below it lies the hand, and cards on the
+# table that a hand covers can be neither read nor added to.
+MELD_SCALE_MIN = 0.55
+YOUR_MELD_ROOM = HAND_Y - 20 - YOUR_MELD_Y
+OPP_MELD_ROOM = STOCK_Y - 20 - OPP_MELD_Y
 
-    Runs stand up and sets lie down, so the boxes differ in shape and the row
-    wraps when it runs out of table.
-    """
+
+def _place(kinds: list[str], sizes: list[int], top: float,
+           scale: float) -> list[tuple]:
+    width_of = MELD_W * scale
+    height_of = MELD_H * scale
+    step, vstep = MELD_STEP * scale, MELD_VSTEP * scale
+
     boxes = []
     x, y, row_height = MELD_X0, top, 0
     for kind, size in zip(kinds, sizes):
         vertical = kind == RUN
         if vertical:
-            width, height = MELD_W, (size - 1) * MELD_VSTEP + MELD_H
+            width, height = width_of, (size - 1) * vstep + height_of
         else:
-            width, height = (size - 1) * MELD_STEP + MELD_W, MELD_H
+            width, height = (size - 1) * step + width_of, height_of
         if x + width > TABLE_W - 16:
-            x, y, row_height = MELD_X0, y + row_height + 14, 0
+            x, y, row_height = MELD_X0, y + row_height + 14 * scale, 0
         boxes.append((x, y, width, height, vertical))
-        x += width + 20
+        x += width + 20 * scale
         row_height = max(row_height, height)
     return boxes
 
 
-def card_position(box: tuple, offset: int) -> tuple[float, float]:
+def meld_boxes(kinds: list[str], sizes: list[int], top: float,
+               room: float | None = None) -> tuple[list[tuple], float]:
+    """Place a row of melds, and say how much they had to shrink to fit.
+
+    Runs stand up and sets lie down, so the boxes differ in shape and the row
+    wraps when it runs out of table. If the whole lot is taller than the band
+    allows, the cards shrink until it fits — smaller cards also fit more to a
+    row, so a second pass often wins back a row as well.
+    """
+    scale = 1.0
+    boxes = _place(kinds, sizes, top, scale)
+    if not room or not boxes:
+        return boxes, scale
+
+    for _pass in range(3):
+        needed = max(box[1] + box[3] for box in boxes) - top
+        if needed <= room:
+            break
+        scale = max(MELD_SCALE_MIN, scale * room / needed)
+        boxes = _place(kinds, sizes, top, scale)
+    return boxes, scale
+
+
+def card_position(box: tuple, offset: int,
+                  scale: float = 1.0) -> tuple[float, float]:
     """Where the offset-th card of a meld goes inside its box."""
     x, y, _width, _height, vertical = box
     if vertical:
-        return x, y + offset * MELD_VSTEP
-    return x + offset * MELD_STEP, y
+        return x, y + offset * MELD_VSTEP * scale
+    return x + offset * MELD_STEP * scale, y
