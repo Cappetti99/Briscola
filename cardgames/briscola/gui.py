@@ -10,16 +10,17 @@ import traceback
 import tkinter as tk
 from tkinter import simpledialog
 
-from .. import cardart, records
+from .. import cardart, records, ui
+from ..burraco import engine as burraco_engine
+from ..burraco import view as burraco_view
 from . import ai
 from ..cards import KING, QUEEN, RANK_NAMES, Card
 from .engine import AI, HUMAN, TOTAL_POINTS, TRICKS_PER_GAME, WINNING_POINTS, Game
 
-# Window geometry.
-TABLE_W, TABLE_H = 800, 660
-PANEL_W = 292
-STATUS_H = 46
-WIN_W, WIN_H = TABLE_W + PANEL_W, TABLE_H + STATUS_H
+from ..ui import (ACCENT, ACCENT_TEXT, CONTENT_W, CONTENT_X, FELT, FELT_DARK,
+                  FELT_EDGE, PANEL_BG, PANEL_CARD, PANEL_CARD_HI, PANEL_W,
+                  PANEL_X, STATUS_H, TABLE_H, TABLE_W, TEXT, TEXT_DIM,
+                  WIN_H, WIN_W)
 
 # Table layout.
 CARD_W, CARD_H = 94, 144
@@ -30,12 +31,6 @@ AI_HAND_Y = 18
 TABLE_Y = 208
 PLAYER_HAND_Y = 486
 STOCK_X, STOCK_Y = 22, 250
-
-# Panel layout.
-PANEL_X = TABLE_W
-PAD = 16
-CONTENT_X = PANEL_X + PAD
-CONTENT_W = PANEL_W - 2 * PAD
 LOG_LINES = 8
 
 # Pacing (ms). Both waits can be skipped with a click or the space bar.
@@ -43,18 +38,6 @@ AI_DELAY = 550
 TRICK_DELAY = 1000
 ANIM_STEPS = 8
 ANIM_MS = 18
-
-# Palette.
-FELT = "#14603c"
-FELT_DARK = "#0f4d30"
-FELT_EDGE = "#2c7550"
-PANEL_BG = "#10382a"
-PANEL_CARD = "#17523b"
-PANEL_CARD_HI = "#1e6448"
-TEXT = "#f2ede0"
-TEXT_DIM = "#9fc4b0"
-ACCENT = "#f2c14e"
-ACCENT_TEXT = "#1b2b16"
 
 # Set BRISCOLA_DEBUG=1 to trace what the interface does, for diagnosing a
 # freeze on a machine you cannot watch.
@@ -91,6 +74,8 @@ class BriscolaApp(tk.Tk):
         self.records = records_store or records.Records()
         self.player = self.records.current_player
         self.difficulty = ai.NORMAL
+        self.game_kind = ui.BRISCOLA
+        self.selected: set[int] = set()
 
         self.game: Game | None = None
         self.state = S_MENU
@@ -136,14 +121,24 @@ class BriscolaApp(tk.Tk):
     # --- game flow --------------------------------------------------------
 
     def new_game(self):
-        trace("new game")
+        trace(f"new game: {self.game_kind}")
         self._cancel_pending()
-        self.game = Game(first_leader=self.next_leader)
-        self.next_leader = 1 - self.next_leader
         self.hover.clear()
+        self.selected.clear()
         self.log_lines.clear()
         self._recorded = False
         self._anim_offset = None
+        if self.game_kind == ui.BURRACO:
+            self.game = burraco_engine.Game(first_player=self.next_leader)
+            self.next_leader = 1 - self.next_leader
+            who = ("you start" if self.game.turn == HUMAN
+                   else "the computer starts")
+            self._set_status(f"New hand of Burraco. {who}: draw a card, "
+                             "or take the discard pile.")
+            self.after_move()
+            return
+        self.game = Game(first_leader=self.next_leader)
+        self.next_leader = 1 - self.next_leader
         who = "you lead" if self.game.leader == HUMAN else "the computer leads"
         self._set_status(f"New game. Trump: {self.game.trump_suit}. {who}.")
         self._advance()
@@ -224,6 +219,8 @@ class BriscolaApp(tk.Tk):
         item left a dead strip: hovering lifted the card out of the bottom of
         its own hover zone, so a click there hit bare felt and did nothing.
         """
+        if self.game_kind == ui.BURRACO:
+            return          # every Burraco control is an item binding of its own
         spent = (self._click_serial is not None
                  and getattr(event, "serial", None) == self._click_serial)
         index = self._hand_slot_at(event.x, event.y)
@@ -310,6 +307,10 @@ class BriscolaApp(tk.Tk):
 
         if self.state == S_MENU:
             self._draw_menu()
+        elif self.game_kind == ui.BURRACO:
+            burraco_view.draw(self)
+            burraco_view.draw_panel(self)
+            self._draw_status()
         else:
             game = self.game
             assert game is not None
@@ -686,29 +687,40 @@ class BriscolaApp(tk.Tk):
         self._panel_link(left + MENU_COL_W - 14, 352, "change", "menu_player",
                          self._change_player)
 
-        c.create_text(left, 420, text="DIFFICULTY", anchor="w", fill=TEXT_DIM,
+        c.create_text(left, 414, text="GAME", anchor="w", fill=TEXT_DIM,
                       font=("Helvetica", 9, "bold"))
-        pill_w = (MENU_COL_W - 2 * 8) / 3
-        for index, level in enumerate(ai.LEVELS):
-            self._button(left + index * (pill_w + 8), 432, pill_w, 34,
-                         ai.LEVEL_LABELS[level], f"level_{level}",
-                         lambda level=level: self.set_difficulty(level),
-                         selected=(level == self.difficulty))
-        c.create_text(MENU_CX, 484, text=LEVEL_BLURBS[self.difficulty],
+        game_w = (MENU_COL_W - 8) / 2
+        for index, kind in enumerate(ui.GAMES):
+            self._button(left + index * (game_w + 8), 424, game_w, 34,
+                         ui.GAME_LABELS[kind], f"game_{kind}",
+                         lambda kind=kind: self.set_game(kind),
+                         selected=(kind == self.game_kind))
+        c.create_text(MENU_CX, 474, text=ui.GAME_BLURBS[self.game_kind],
                       fill=TEXT_DIM, font=("Helvetica", 11))
 
-        self._button(left, 508, MENU_COL_W, 46, "Start game", "menu_start",
+        c.create_text(left, 496, text="DIFFICULTY", anchor="w", fill=TEXT_DIM,
+                      font=("Helvetica", 9, "bold"))
+        levels = (ai.LEVELS if self.game_kind == ui.BRISCOLA
+                  else burraco_view.burraco_ai.LEVELS)
+        labels = (ai.LEVEL_LABELS if self.game_kind == ui.BRISCOLA
+                  else burraco_view.burraco_ai.LEVEL_LABELS)
+        pill_w = (MENU_COL_W - 8 * (len(levels) - 1)) / len(levels)
+        for index, level in enumerate(levels):
+            self._button(left + index * (pill_w + 8), 506, pill_w, 34,
+                         labels[level], f"level_{level}",
+                         lambda level=level: self.set_difficulty(level),
+                         selected=(level == self.difficulty))
+        c.create_text(MENU_CX, 556, text=LEVEL_BLURBS[self.difficulty],
+                      fill=TEXT_DIM, font=("Helvetica", 11))
+
+        self._button(left, 576, MENU_COL_W, 42, "Start game", "menu_start",
                      self.start_game, primary=True, font_size=15)
         half = (MENU_COL_W - 10) / 2
-        self._button(left, 566, half, 34, "Statistics", "menu_stats",
+        self._button(left, 626, half, 30, "Statistics", "menu_stats",
                      self.show_statistics)
-        self._button(left + half + 10, 566, half, 34, "Rules", "menu_rules",
+        self._button(left + half + 10, 626, half, 30, "Rules", "menu_rules",
                      self.show_rules)
 
-        c.create_text(MENU_CX, 626,
-                      text=f"Results are saved to {self.records.path} "
-                           "and the matching .txt",
-                      fill=TEXT_DIM, font=("Helvetica", 9))
         c.create_text(MENU_CX, WIN_H - 26,
                       text="Enter = start    D = difficulty    "
                            "S = statistics    R = rules",
@@ -747,8 +759,12 @@ class BriscolaApp(tk.Tk):
         c.create_text(16, TABLE_H + STATUS_H / 2, text=self.status_text,
                       anchor="w", fill=TEXT, font=("Helvetica", 13))
         # render() runs before the timer is armed, so key off the state.
-        hint = ("click or space to carry on" if self.state in (S_SHOW, S_AI)
-                else "keys: 1 2 3 play - N new - M menu - S stats - D difficulty")
+        if self.game_kind == ui.BURRACO:
+            hint = "click cards to pick them - N new hand - M menu - S stats"
+        elif self.state in (S_SHOW, S_AI):
+            hint = "click or space to carry on"
+        else:
+            hint = "keys: 1 2 3 play - N new - M menu - S stats - D difficulty"
         c.create_text(WIN_W - 16, TABLE_H + STATUS_H / 2, text=hint,
                       anchor="e", fill=TEXT_DIM, font=("Helvetica", 10))
 
@@ -780,6 +796,75 @@ class BriscolaApp(tk.Tk):
     def cycle_difficulty(self):
         index = ai.LEVELS.index(self.difficulty)
         self.set_difficulty(ai.LEVELS[(index + 1) % len(ai.LEVELS)])
+
+    # --- Burraco flow -----------------------------------------------------
+
+    def say(self, text: str):
+        """Tell the player why something did not work."""
+        self._set_status(text)
+        self.render()
+
+    def note(self, text: str):
+        """Record a move in the panel log."""
+        self.log_lines.insert(0, (text, ""))
+        self._set_status(text)
+
+    def after_move(self):
+        """Redraw, then hand over to the computer if it is its turn."""
+        self._cancel_pending()
+        if self.game.game_over:
+            self.state = S_OVER
+            self.render()
+            self._finish_burraco()
+            return
+        if self.game.turn == AI:
+            self.state = S_AI
+            self.render()
+            self._pending = self.after(AI_DELAY, self._burraco_ai_turn)
+            return
+        self.state = S_HUMAN
+        self.render()
+
+    def _burraco_ai_turn(self):
+        self._pending = None
+        burraco_view.computer_turn(self)
+        if not self.game.game_over and self.game.turn == HUMAN:
+            self._set_status("Your turn: draw a card, or take the pile.")
+        self.after_move()
+
+    def _finish_burraco(self):
+        game = self.game
+        you, them = game.scores()
+        if not self._recorded:
+            self._recorded = True
+            self.records.add_match(
+                self.player, you, them, self.difficulty,
+                "you" if game.first_player == HUMAN else "computer",
+                game=ui.BURRACO)
+        winner = game.winner()
+        if winner is None:
+            title, msg = "Draw", f"Draw, {you} to {them}."
+        elif winner == HUMAN:
+            title, msg = "You win!", f"You win {you} to {them}."
+        else:
+            title, msg = "You lose", f"The computer wins {them} to {you}."
+        ended = ("closed the hand" if game.closed_by is not None
+                 else "the stock ran out")
+        stats = self.records.stats(self.player)
+        self.show_overlay(title,
+                          f"{msg}\n\nThe hand ended because "
+                          f"{'someone ' if game.closed_by is not None else ''}"
+                          f"{ended}.\n\n{self.player}: {stats.summary()}",
+                          actions=(("New hand", self._overlay_new_game),
+                                   ("Statistics", self.show_statistics),
+                                   ("Menu", self._overlay_menu)))
+
+    def set_game(self, kind: str):
+        """Pick which game the Start button will deal."""
+        self.game_kind = kind
+        if kind == ui.BURRACO and self.difficulty not in burraco_view.burraco_ai.LEVELS:
+            self.difficulty = burraco_view.burraco_ai.NORMAL
+        self.render()
 
     def set_difficulty(self, level: str):
         self.difficulty = level
@@ -900,7 +985,7 @@ class BriscolaApp(tk.Tk):
                 self.show_rules()
             return
 
-        if char in "123":
+        if char in "123" and self.game_kind == ui.BRISCOLA:
             self._play_human(int(char) - 1)
         elif char == " " or keysym in ("Return", "KP_Enter"):
             self._skip_wait()

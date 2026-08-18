@@ -52,6 +52,7 @@ class Match:
     result: str
     difficulty: str
     opened: str  # "you" or "computer"
+    game: str = "briscola"      # defaulted, so rows written before this load
 
     @property
     def when(self) -> datetime:
@@ -64,9 +65,9 @@ class Match:
         return f"{self.when:%d %b %H:%M}"
 
     def text_line(self, player: str) -> str:
-        return (f"{self.when:%Y-%m-%d %H:%M}  {player:<16} "
+        return (f"{self.when:%Y-%m-%d %H:%M}  {player:<16} {self.game:<9} "
                 f"{RESULT_LABELS.get(self.result, self.result):<5} "
-                f"{self.you:>3} - {self.ai:<3} "
+                f"{self.you:>4} - {self.ai:<4} "
                 f"difficulty={self.difficulty:<6} opened={self.opened}")
 
 
@@ -144,8 +145,8 @@ class Records:
         with self.text_path.open("a", encoding="utf-8") as handle:
             if new_file:
                 handle.write("# Briscola match log\n")
-                handle.write("# date time        player           "
-                             "result  you - ai  settings\n")
+                handle.write("# date time        player           game      "
+                             "result   you -  ai   settings\n")
             handle.write(match.text_line(player) + "\n")
 
     # --- players ----------------------------------------------------------
@@ -175,11 +176,11 @@ class Records:
     # --- matches ----------------------------------------------------------
 
     def add_match(self, name: str, you: int, ai: int, difficulty: str,
-                  opened: str) -> Match:
+                  opened: str, game: str = "briscola") -> Match:
         result = WIN if you > ai else LOSS if you < ai else DRAW
         match = Match(date=datetime.now().isoformat(timespec="seconds"),
                       you=you, ai=ai, result=result,
-                      difficulty=difficulty, opened=opened)
+                      difficulty=difficulty, opened=opened, game=game)
         entry = self._player_entry(name)
         entry["matches"].append(asdict(match))
         self.data["last_player"] = name

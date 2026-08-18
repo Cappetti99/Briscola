@@ -469,6 +469,243 @@ def test_keyboard_shortcuts_play_cards():
         assert app.difficulty != ai.NORMAL
 
 
+
+
+
+# --- Burraco through the same window --------------------------------------
+
+def test_the_menu_offers_both_games():
+    from cardgames import ui
+
+    with app_with_records(start=False) as (app, _store, _tmp):
+        app.update()
+        for kind in ui.GAMES:
+            assert f"game_{kind}" in app._buttons, kind
+
+        _rect, choose = app._buttons["game_burraco"]
+        choose()
+        app.update()
+        assert app.game_kind == ui.BURRACO
+        assert app.state == gui.S_MENU, "picking a game must not deal one"
+
+
+def test_a_burraco_hand_plays_to_the_end_and_is_recorded():
+    from cardgames import ui
+    from cardgames.burraco import ai as burraco_ai
+    from cardgames.burraco.engine import HUMAN as B_HUMAN
+
+    with app_with_records(start=False) as (app, store, _tmp):
+        app.set_game(ui.BURRACO)
+        app.start_game()
+
+        turns = 0
+        while not app.game.game_over and turns < 300:
+            app.update()
+            if app.state != gui.S_HUMAN:
+                time.sleep(0.005)
+                continue
+            # Play our seat with the same policy the opponent uses.
+            burraco_ai.take_turn(app.game, B_HUMAN, app.difficulty)
+            app.selected.clear()
+            app.after_move()
+            turns += 1
+
+        assert app.game.game_over, f"still going after {turns} turns"
+        settle(app)
+        matches = store.matches("tester")
+        assert len(matches) == 1, matches
+        assert matches[0].game == ui.BURRACO
+        assert matches[0].you == app.game.scores()[0]
+        assert app.overlay is not None
+
+
+def test_clicking_a_burraco_card_selects_it():
+    from cardgames import ui
+
+    with app_with_records(start=False) as (app, _store, _tmp):
+        app.set_game(ui.BURRACO)
+        app.start_game()
+        app.update()
+        assert app.selected == set()
+
+        from cardgames.burraco import view
+        view.click_card(app, 0)
+        assert app.selected == {0}
+        view.click_card(app, 0)
+        assert app.selected == set(), "clicking again puts the card back down"
+
+
+def test_burraco_refuses_an_illegal_meld_without_losing_cards():
+    from cardgames import ui
+    from cardgames.burraco import view
+    from cardgames.burraco.engine import HUMAN as B_HUMAN
+
+    with app_with_records(start=False) as (app, _store, _tmp):
+        app.set_game(ui.BURRACO)
+        app.start_game()
+        while app.state != gui.S_HUMAN:
+            app.update()
+            time.sleep(0.005)
+
+        view.click_action(app, "draw")
+        before = sorted(map(str, app.game.hands[B_HUMAN]))
+        app.selected = {0, 1, 2}
+        view.click_action(app, "meld")       # almost certainly not a meld
+        after = sorted(map(str, app.game.hands[B_HUMAN]))
+        if app.game.melds[B_HUMAN]:
+            return                           # it happened to be a real meld
+        assert after == before, "a refused meld must leave the hand alone"
+
+
+def _select(app, cards):
+    """Select exactly these cards in hand, duplicates and all."""
+    from cardgames.burraco.engine import HUMAN as B_HUMAN
+
+    hand = app.game.hands[B_HUMAN]
+    chosen = set()
+    for card in cards:
+        for index, held in enumerate(hand):
+            if held == card and index not in chosen:
+                chosen.add(index)
+                break
+    app.selected = chosen
+    return chosen
+
+
+def _play_a_turn_through_the_buttons(app):
+    """A turn played only by clicking, the way a person plays it."""
+    from cardgames.burraco import ai as burraco_ai
+    from cardgames.burraco import view
+    from cardgames.burraco.engine import HUMAN as B_HUMAN, can_extend
+
+    game = app.game
+    view.click_action(app, "pile" if len(game.discards) >= 6 else "draw")
+    if game.game_over or not game.phase.drawn:
+        return
+
+    for _ in range(6):                       # lay down what the hand holds
+        melds = burraco_ai._find_melds(list(game.hands[B_HUMAN]))
+        if not melds:
+            break
+        before = len(game.melds[B_HUMAN])
+        _select(app, melds[0])
+        view.click_action(app, "meld")
+        if len(game.melds[B_HUMAN]) == before:
+            app.selected.clear()
+            break
+
+    for index, meld in enumerate(list(game.melds[B_HUMAN])):
+        for card in list(game.hands[B_HUMAN]):
+            if can_extend(meld, card):
+                _select(app, [card])
+                view.click_meld(app, index)
+                break
+
+    if game.game_over:
+        return
+    if game.hands[B_HUMAN]:
+        app.selected = {0}
+        view.click_action(app, "discard")
+    else:
+        view.click_action(app, "end")
+
+
+def test_a_burraco_hand_played_only_by_clicking():
+    """Drive the interface itself: every move goes through a real control.
+
+    The end-to-end test above drives the engine for our seat, so it says
+    nothing about the buttons. This one draws, lays down, extends and
+    discards by clicking, which is the path a player actually takes.
+    """
+    from cardgames import ui
+    from cardgames.burraco.engine import HUMAN as B_HUMAN
+    from cardgames.cards import burraco_deck
+    from collections import Counter
+
+    with app_with_records(start=False) as (app, store, _tmp):
+        app.set_game(ui.BURRACO)
+        app.start_game()
+
+        turns = 0
+        while not app.game.game_over and turns < 300:
+            app.update()
+            if app.state != gui.S_HUMAN:
+                time.sleep(0.005)
+                continue
+            hand_before = len(app.game.hands[B_HUMAN])
+            _play_a_turn_through_the_buttons(app)
+            turns += 1
+            assert app.game.turn != B_HUMAN or app.game.game_over, (
+                f"turn {turns}: the turn never passed "
+                f"(hand {hand_before} -> {len(app.game.hands[B_HUMAN])})")
+
+        assert app.game.game_over, f"still going after {turns} turns"
+        assert turns >= 5, "the hand ended suspiciously early"
+
+        # Nothing was lost or conjured up along the way.
+        game = app.game
+        everywhere = Counter(game.hands[0] + game.hands[1] + game.stock
+                             + game.discards + game.pots[0] + game.pots[1])
+        for melds in game.melds:
+            for meld in melds:
+                everywhere.update(meld.cards)
+        assert everywhere == Counter(burraco_deck())
+
+        settle(app)
+        assert store.matches("tester")[0].game == ui.BURRACO
+
+
+def test_clicking_a_meld_extends_it():
+    from cardgames import ui
+    from cardgames.burraco import view
+    from cardgames.burraco.engine import HUMAN as B_HUMAN, build_meld
+    from cardgames.cards import Card
+
+    with app_with_records(start=False) as (app, _store, _tmp):
+        app.set_game(ui.BURRACO)
+        app.start_game()
+        while app.state != gui.S_HUMAN:
+            app.update()
+            time.sleep(0.005)
+
+        view.click_action(app, "draw")
+        app.game.melds[B_HUMAN] = [build_meld([Card(5, "Hearts"),
+                                               Card(6, "Hearts"),
+                                               Card(7, "Hearts")])]
+        app.game.hands[B_HUMAN] = [Card(8, "Hearts"), Card(2, "Clubs")]
+        _select(app, [Card(8, "Hearts")])
+        view.click_meld(app, 0)
+
+        assert len(app.game.melds[B_HUMAN][0]) == 4
+        assert Card(8, "Hearts") not in app.game.hands[B_HUMAN]
+        assert app.selected == set(), "the selection is cleared after the move"
+
+
+def test_clicking_a_meld_buys_the_pinella_back():
+    from cardgames import ui
+    from cardgames.burraco import view
+    from cardgames.burraco.engine import HUMAN as B_HUMAN, build_meld
+    from cardgames.cards import JOKER_RANK, Card
+
+    joker = Card(JOKER_RANK, "Joker")
+    with app_with_records(start=False) as (app, _store, _tmp):
+        app.set_game(ui.BURRACO)
+        app.start_game()
+        while app.state != gui.S_HUMAN:
+            app.update()
+            time.sleep(0.005)
+
+        view.click_action(app, "draw")
+        app.game.melds[B_HUMAN] = [build_meld([Card(5, "Hearts"), joker,
+                                               Card(7, "Hearts")])]
+        app.game.hands[B_HUMAN] = [Card(6, "Hearts")]
+        _select(app, [Card(6, "Hearts")])
+        view.click_meld(app, 0)
+
+        assert joker in app.game.hands[B_HUMAN], "the joker comes back to hand"
+        assert app.game.melds[B_HUMAN][0].wilds == 0
+
+
 if __name__ == "__main__":
     failures = 0
     for name, fn in sorted(globals().items()):
