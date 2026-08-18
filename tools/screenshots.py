@@ -124,6 +124,36 @@ def shot_rules(store):
     app.destroy()
 
 
+def shot_burraco(store):
+    """The Burraco table, a few turns in, with two cards picked."""
+    from cardgames import ui
+    from cardgames.burraco import ai as burraco_ai
+    from cardgames.burraco.engine import HUMAN as B_HUMAN
+
+    app = gui.BriscolaApp(records_store=store)
+    gui.AI_DELAY = 5
+    app.set_game(ui.BURRACO)
+    app.update()
+    app.start_game()
+
+    turns = 0
+    while turns < 12 and not app.game.game_over:
+        settle(app, 0.05)
+        if app.state != gui.S_HUMAN:
+            continue
+        burraco_ai.take_turn(app.game, B_HUMAN, app.difficulty)
+        app.selected.clear()
+        app.after_move()
+        turns += 1
+
+    settle(app, 0.3)
+    app.selected = {0, 2}
+    app.render()
+    settle(app, 0.2)
+    export(app.canvas, gui.WIN_W, gui.WIN_H, "burraco")
+    app.destroy()
+
+
 def shot_statistics(store):
     root = tk.Tk()
     root.withdraw()
@@ -170,7 +200,7 @@ def shot_deck():
 SHOTS = {
     "menu": shot_menu,
     "table": shot_table,
-    "rules": shot_rules,
+    "burraco": shot_burraco,
     "statistics": shot_statistics,
     "deck": lambda _store: shot_deck(),
 }
