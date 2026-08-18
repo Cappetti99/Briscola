@@ -4,7 +4,7 @@ Written as functions over the shell window rather than a class of its own, so
 Briscola and Burraco share one window, one menu and one record file.
 """
 
-from .. import cardart
+from .. import cardart, ui
 from ..cards import Card
 from ..ui import (ACCENT, CONTENT_W, CONTENT_X, FELT, FELT_EDGE, PANEL_BG,
                   PANEL_CARD, TABLE_H, TABLE_W, TEXT, TEXT_DIM)
@@ -52,7 +52,7 @@ def _draw_opponent(app, game):
                                BACK_W, BACK_H)
     canvas.create_text(TABLE_W - 12, OPP_HAND_Y + BACK_H / 2,
                        text=f"COMPUTER  {len(hand)} cards", anchor="e",
-                       fill=FELT_EDGE, font=("Helvetica", 10, "bold"))
+                       fill=FELT_EDGE, font=ui.font(10, "bold"))
     _draw_melds(app, game, AI, OPP_MELD_Y, OPP_MELD_ROOM)
 
 
@@ -62,7 +62,7 @@ def _draw_stock(app, game):
         cardart.draw_card_back(canvas, STOCK_X, STOCK_Y, HAND_W, HAND_H)
         canvas.create_text(STOCK_X + HAND_W / 2, STOCK_Y + HAND_H + 14,
                            text=f"{len(game.stock)} in stock", fill=TEXT_DIM,
-                           font=("Helvetica", 10))
+                           font=ui.font(10))
     else:
         cardart.draw_placeholder(canvas, STOCK_X, STOCK_Y, HAND_W, HAND_H,
                                  "stock\nout")
@@ -72,7 +72,7 @@ def _draw_stock(app, game):
                           game.discards[-1])
         canvas.create_text(PILE_X + HAND_W / 2, STOCK_Y + HAND_H + 14,
                            text=f"{len(game.discards)} in the pile",
-                           fill=TEXT_DIM, font=("Helvetica", 10))
+                           fill=TEXT_DIM, font=ui.font(10))
     else:
         cardart.draw_placeholder(canvas, PILE_X, STOCK_Y, HAND_W, HAND_H,
                                  "discard\npile")
@@ -96,7 +96,7 @@ def _draw_melds(app, game, player, top, room):
     melds = game.melds[player]
     if not melds:
         canvas.create_text(CENTER_X, top + MELD_H / 2, text="no melds yet",
-                           fill=FELT_EDGE, font=("Helvetica", 11))
+                           fill=FELT_EDGE, font=ui.font(11))
         return
 
     boxes, scale = meld_boxes([meld.kind for meld in melds],
@@ -112,7 +112,7 @@ def _draw_melds(app, game, player, top, room):
             canvas.create_text(x + width / 2, y - 7,
                                text="BURRACO" + ("" if meld.is_clean else " *"),
                                fill=ACCENT,
-                               font=("Helvetica", max(7, int(9 * scale)), "bold"))
+                               font=ui.font(max(7, int(9 * scale)), "bold"))
         if player == HUMAN:
             canvas.tag_bind(tag, "<Button-1>",
                             lambda _e, i=index: click_meld(app, i))
@@ -130,7 +130,7 @@ def _draw_hand(app, game):
         canvas.create_text(CENTER_X, TABLE_H - 26,
                            text=f"your {count} cards are hidden"
                                 "   -   H, or the button, brings them back",
-                           fill=FELT_EDGE, font=("Helvetica", 12, "bold"))
+                           fill=FELT_EDGE, font=ui.font(12, "bold"))
         return
 
     for index in visible_range(count, app.hand_first):
@@ -149,7 +149,7 @@ def _draw_hand(app, game):
 
     canvas.create_text(TABLE_W - 12, HAND_Y - 14,
                        text=f"YOU  {count} cards", anchor="e",
-                       fill=FELT_EDGE, font=("Helvetica", 10, "bold"))
+                       fill=FELT_EDGE, font=ui.font(10, "bold"))
 
 
 def _draw_scroll_arrows(app, count):
@@ -174,7 +174,7 @@ def _draw_scroll_arrows(app, count):
                        text=f"cards {app.hand_first + 1}-"
                             f"{app.hand_first + shown} of {count}"
                             "   -   drag the wheel or the arrows",
-                       fill=TEXT_DIM, font=("Helvetica", 10))
+                       fill=TEXT_DIM, font=ui.font(10))
 
 
 def pointed_card(app, x, y):
@@ -224,40 +224,40 @@ def draw_panel(app):
     canvas.create_rectangle(TABLE_W, 0, TABLE_W + 292, TABLE_H,
                             fill=PANEL_BG, outline="")
     canvas.create_text(CONTENT_X, 26, text="BURRACO", anchor="w", fill=ACCENT,
-                       font=("Helvetica", 19, "bold"))
+                       font=ui.font(19, "bold"))
     match = app.match
     if match is None or match.single_hand:
         subtitle = "you vs. the computer  -  one hand"
     else:
         subtitle = (f"match to {match.target}  -  hand {match.hands + 1}")
     canvas.create_text(CONTENT_X, 48, text=subtitle, anchor="w",
-                       fill=TEXT_DIM, font=("Helvetica", 11))
+                       fill=TEXT_DIM, font=ui.font(11))
 
     y = 74
     for player, title in ((HUMAN, "YOU"), (AI, "COMPUTER")):
         cardart.round_rect(canvas, CONTENT_X, y, CONTENT_X + CONTENT_W, y + 52,
                            8, fill=PANEL_CARD, outline="")
         canvas.create_text(CONTENT_X + 10, y + 16, text=title, anchor="w",
-                           fill=TEXT_DIM, font=("Helvetica", 9, "bold"))
+                           fill=TEXT_DIM, font=ui.font(9, "bold"))
         canvas.create_text(CONTENT_X + CONTENT_W - 10, y + 16,
                            text=str(game.score(player)), anchor="e", fill=TEXT,
-                           font=("Helvetica", 15, "bold"))
+                           font=ui.font(15, "bold"))
         burracos = sum(1 for meld in game.melds[player] if meld.is_burraco)
         pot = "pot taken" if game.pot_taken[player] else "pot waiting"
         canvas.create_text(CONTENT_X + 10, y + 38,
                            text=f"{burracos} burraco(s) - {pot}", anchor="w",
-                           fill=TEXT_DIM, font=("Helvetica", 10))
+                           fill=TEXT_DIM, font=ui.font(10))
         if match is not None and not match.single_hand:
             # This hand is the small number; the match is the one that counts.
             canvas.create_text(CONTENT_X + CONTENT_W - 10, y + 38,
                                text=f"match {match.totals[player]}", anchor="e",
                                fill=ACCENT if match.totals[player] >= match.target
-                               else TEXT_DIM, font=("Helvetica", 10, "bold"))
+                               else TEXT_DIM, font=ui.font(10, "bold"))
         y += 62
 
     canvas.create_text(CONTENT_X, y + 6,
                        text=f"Selected: {len(app.selected)} card(s)",
-                       anchor="w", fill=TEXT_DIM, font=("Helvetica", 10))
+                       anchor="w", fill=TEXT_DIM, font=ui.font(10))
 
     top = y + 26
     for index, key in enumerate(ACTIONS):
@@ -280,11 +280,11 @@ def draw_panel(app):
                 font_size=10)
 
     canvas.create_text(CONTENT_X, sort_top + 84, text="LAST MOVES", anchor="w",
-                       fill=TEXT, font=("Helvetica", 9, "bold"))
+                       fill=TEXT, font=ui.font(9, "bold"))
     for row, line in enumerate(app.log_lines[:7]):
         canvas.create_text(CONTENT_X, sort_top + 102 + row * 16,
                            text=line[0] if isinstance(line, tuple) else line,
-                           anchor="w", fill=TEXT_DIM, font=("Helvetica", 9))
+                           anchor="w", fill=TEXT_DIM, font=ui.font(9))
 
 
 def toggle_hand(app):

@@ -23,7 +23,7 @@ from cardgames.briscola.engine import AI, HUMAN, TOTAL_POINTS
 
 
 @contextmanager
-def app_with_records(difficulty=ai.NORMAL, start=True):
+def app_with_records(difficulty=ai.NORMAL, start=True, scale=1.0):
     """A fresh app writing to a throwaway record store, dialogs stubbed out.
 
     The app opens on the menu, so `start=True` presses Start for you; pass
@@ -42,7 +42,9 @@ def app_with_records(difficulty=ai.NORMAL, start=True):
         gui.AI_DELAY = gui.TRICK_DELAY = 5
         ai.WORLDS_EARLY, ai.WORLDS_LATE = 8, 12
 
-        app = gui.BriscolaApp(records_store=store)
+        # Pinned to the design size: the geometry the tests reason about is
+        # the unscaled one, and one test scales on purpose to check the rest.
+        app = gui.BriscolaApp(records_store=store, scale=scale)
         # Park the window off screen. It has to stay mapped — Tk will not
         # deliver synthetic pointer events to an unmapped window — but out
         # there the real mouse cannot land a click inside a running test.
@@ -773,6 +775,58 @@ def test_a_new_match_clears_the_running_score():
         app.new_match()
         app.update()
         assert app.match.totals == [0, 0] and app.match.hands == 0
+
+
+def test_the_window_sizes_itself_to_the_screen():
+    from cardgames import ui
+
+    small = ui.scale_for(1280, 800)
+    large = ui.scale_for(2560, 1440)
+    assert small < large
+    assert ui.MIN_SCALE <= small <= ui.MAX_SCALE
+    assert ui.MIN_SCALE <= large <= ui.MAX_SCALE
+    # Whatever it picks has to leave the window inside the screen.
+    for width, height in ((1280, 800), (1440, 900), (1710, 1112), (2560, 1440)):
+        k = ui.scale_for(width, height)
+        assert ui.WIN_W * k <= width, (width, height, k)
+        assert ui.WIN_H * k <= height, (width, height, k)
+
+
+def test_a_scaled_window_still_puts_clicks_on_the_right_card():
+    """The pointer speaks in screen pixels, the layout in design units.
+
+    Everything is drawn at one design size and the canvas is scaled to the
+    window that fits; a click therefore has to be divided back down before it
+    is asked which card it landed on.
+    """
+    from cardgames import ui
+    from cardgames.burraco import layout, view
+    from cardgames.burraco.engine import HUMAN as B_HUMAN
+
+    scale = 1.3
+    with app_with_records(start=False, scale=scale) as (app, _store, _tmp):
+        assert ui.SCALE == scale
+        assert app.canvas.winfo_reqwidth() == int(ui.WIN_W * scale)
+
+        app.set_game(ui.BURRACO)
+        app.start_game()
+        assert wait_for(app, lambda: app.state == gui.S_HUMAN)
+
+        count = len(app.game.hands[B_HUMAN])
+        step = layout.hand_step(count)
+        for index in (0, count // 2, count - 1):
+            design_x = layout.hand_x(count, index) + step / 2
+            design_y = layout.HAND_Y + 40
+            app.canvas.event_generate("<Button-1>",
+                                      x=int(design_x * scale),
+                                      y=int(design_y * scale))
+            app.update()
+            assert index in app.selected, (index, app.selected)
+            view.click_card(app, index)          # put it back down
+
+        # And the cards really are drawn bigger.
+        box = app.canvas.bbox("hand0")
+        assert box[2] - box[0] > layout.HAND_W, "a scaled card is wider"
 
 
 if __name__ == "__main__":

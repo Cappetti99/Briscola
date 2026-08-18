@@ -1,5 +1,6 @@
 """Card drawing on a Tkinter Canvas (no image files involved)."""
 
+from . import ui
 from .cards import RANK_LABELS, Card
 
 # STYLE picks how a card face is laid out:
@@ -148,7 +149,7 @@ def draw_placeholder(canvas, x, y, w, h, text="", tags=(), color="#2c7550"):
                fill="", outline=color, width=2, tags=tags)
     if text:
         canvas.create_text(x + w / 2, y + h / 2, text=text, fill=color,
-                           font=("Helvetica", max(8, int(h * 0.09))), tags=tags)
+                           font=ui.font(max(8, int(h * 0.09))), tags=tags)
 
 
 # --- suit emblems ---------------------------------------------------------
@@ -156,7 +157,7 @@ def draw_placeholder(canvas, x, y, w, h, text="", tags=(), color="#2c7550"):
 def _draw_minimal(canvas, x, y, w, h, card, color, tags):
     """Rank and one pip, nothing else."""
     canvas.create_text(x + w * 0.5, y + h * 0.44, text=card.label, fill=color,
-                       font=("Helvetica", int(h * 0.34), "bold"), tags=tags)
+                       font=ui.font(int(h * 0.34), "bold"), tags=tags)
     emblem(canvas, card.suit, x + w * 0.5, y + h * 0.72, w * 0.26, color, tags)
 
 
@@ -195,7 +196,7 @@ def _draw_pips(canvas, x, y, w, h, card, color, tags):
 def _draw_face_card(canvas, x, y, w, h, card, color, tags):
     canvas.create_text(x + w * 0.5, y + h * 0.40,
                        text=RANK_LABELS[card.rank], fill=color,
-                       font=("Helvetica", int(h * 0.30), "bold"), tags=tags)
+                       font=ui.font(int(h * 0.30), "bold"), tags=tags)
     emblem(canvas, card.suit, x + w * 0.5, y + h * 0.70, w * 0.22, color, tags)
     canvas.create_line(x + w * 0.22, y + h * 0.55, x + w * 0.78, y + h * 0.55,
                        fill=color, width=1, tags=tags)

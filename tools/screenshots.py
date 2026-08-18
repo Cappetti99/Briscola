@@ -69,7 +69,7 @@ def sample_records(path: Path) -> records.Records:
 
 def shot_menu(store):
     """The opening screen."""
-    app = gui.BriscolaApp(records_store=store)
+    app = gui.BriscolaApp(records_store=store, scale=1.0)
     # Show the path a real install would use, not the temporary one.
     app.records.path = Path("~/.briscola/records.json")
     app.set_difficulty(ai.HARD)
@@ -80,7 +80,7 @@ def shot_menu(store):
 
 def shot_table(store):
     """The main window a few tricks into a game, with a card hovered."""
-    app = gui.BriscolaApp(records_store=store)
+    app = gui.BriscolaApp(records_store=store, scale=1.0)
     app.difficulty = ai.HARD
     gui.AI_DELAY = 10
     gui.TRICK_DELAY = 10
@@ -109,7 +109,7 @@ def settle(app, seconds=0.6):
 
 def shot_rules(store):
     """The rules panel, drawn inside the window rather than as a dialog."""
-    app = gui.BriscolaApp(records_store=store)
+    app = gui.BriscolaApp(records_store=store, scale=1.0)
     gui.AI_DELAY = gui.TRICK_DELAY = 10
     app.start_game()
     for _ in range(400):
@@ -130,7 +130,7 @@ def shot_burraco(store):
     from cardgames.burraco import ai as burraco_ai
     from cardgames.burraco.engine import HUMAN as B_HUMAN
 
-    app = gui.BriscolaApp(records_store=store)
+    app = gui.BriscolaApp(records_store=store, scale=1.0)
     gui.AI_DELAY = 5
     app.set_game(ui.BURRACO)
     app.update()

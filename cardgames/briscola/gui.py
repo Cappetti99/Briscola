@@ -58,8 +58,14 @@ LEVEL_BLURBS = {
 
 
 class BriscolaApp(tk.Tk):
-    def __init__(self, records_store: records.Records | None = None):
+    def __init__(self, records_store: records.Records | None = None,
+                 scale: float | None = None):
         super().__init__()
+        # Drawing happens at the design size; the canvas is scaled to whatever
+        # the screen can hold, so there is one set of coordinates to reason
+        # about rather than a layout recomputed for every window size.
+        ui.SCALE = scale if scale else ui.scale_for(self.winfo_screenwidth(),
+                                                    self.winfo_screenheight())
         self.title("Briscola")
         self.configure(bg=PANEL_BG)
         self.resizable(False, False)
@@ -94,7 +100,8 @@ class BriscolaApp(tk.Tk):
         self._click_serial: int | None = None
         self.overlay: tuple[str, str, tuple] | None = None
 
-        self.canvas = tk.Canvas(self, width=WIN_W, height=WIN_H, bg=FELT,
+        self.canvas = tk.Canvas(self, width=int(WIN_W * ui.SCALE),
+                                height=int(WIN_H * ui.SCALE), bg=FELT,
                                 highlightthickness=0)
         self.canvas.pack()
 
@@ -236,8 +243,9 @@ class BriscolaApp(tk.Tk):
             return          # every Burraco control is an item binding of its own
         spent = (self._click_serial is not None
                  and getattr(event, "serial", None) == self._click_serial)
-        index = self._hand_slot_at(event.x, event.y)
-        trace(f"click at ({event.x},{event.y}): state={self.state}"
+        x, y = ui.to_design(event.x, event.y)
+        index = self._hand_slot_at(x, y)
+        trace(f"click at ({x:.0f},{y:.0f}): state={self.state}"
               f" card={index} spent={spent}"
               f" pending={self._pending is not None}"
               f" overlay={self.overlay is not None}")
@@ -348,16 +356,19 @@ class BriscolaApp(tk.Tk):
         if self.overlay is not None:
             self._draw_overlay()
 
+        if ui.SCALE != 1.0:
+            self.canvas.scale("all", 0, 0, ui.SCALE, ui.SCALE)
+
     def _draw_felt(self):
         c = self.canvas
         c.create_rectangle(0, 0, TABLE_W, TABLE_H, fill=FELT, outline="")
         c.create_oval(CENTER_X - 200, TABLE_Y - 48, CENTER_X + 200,
                       TABLE_Y + CARD_H + 110, fill=FELT_DARK, outline="")
         c.create_text(TABLE_W - 14, AI_HAND_Y + CARD_H / 2, text="COMPUTER",
-                      fill=FELT_EDGE, font=("Helvetica", 11, "bold"),
+                      fill=FELT_EDGE, font=ui.font(11, "bold"),
                       anchor="e", angle=90)
         c.create_text(TABLE_W - 14, PLAYER_HAND_Y + CARD_H / 2, text="YOU",
-                      fill=FELT_EDGE, font=("Helvetica", 11, "bold"),
+                      fill=FELT_EDGE, font=ui.font(11, "bold"),
                       anchor="e", angle=90)
 
     def _hand_x(self, count: int, index: int) -> float:
@@ -378,7 +389,7 @@ class BriscolaApp(tk.Tk):
         if game.trump_card is not None:
             cardart.draw_card(c, STOCK_X, STOCK_Y, CARD_W, CARD_H, game.trump_card)
             c.create_text(STOCK_X + CARD_W / 2, STOCK_Y - 16, text="TRUMP",
-                          fill=ACCENT, font=("Helvetica", 10, "bold"))
+                          fill=ACCENT, font=ui.font(10, "bold"))
         else:
             cardart.draw_placeholder(c, STOCK_X, STOCK_Y, CARD_W, CARD_H,
                                      "trump\ndrawn")
@@ -387,7 +398,7 @@ class BriscolaApp(tk.Tk):
             cardart.draw_card_back(c, stock_x, STOCK_Y, CARD_W, CARD_H)
             c.create_text(stock_x + CARD_W / 2, STOCK_Y + CARD_H + 18,
                           text=f"{len(game.stock)} in stock", fill=TEXT_DIM,
-                          font=("Helvetica", 10))
+                          font=ui.font(10))
         else:
             cardart.draw_placeholder(c, stock_x, STOCK_Y, CARD_W, CARD_H,
                                      "stock\nempty")
@@ -414,7 +425,7 @@ class BriscolaApp(tk.Tk):
                               highlight=(player == winner))
             if order == 0 and not game.trick_complete:
                 c.create_text(x + CARD_W / 2, y - 14, text="led",
-                              fill=TEXT_DIM, font=("Helvetica", 10))
+                              fill=TEXT_DIM, font=ui.font(10))
 
     def _draw_player_hand(self, game):
         c = self.canvas
@@ -429,7 +440,7 @@ class BriscolaApp(tk.Tk):
             cardart.draw_card(c, x, y, CARD_W, CARD_H, card, tags=(tag,))
             c.create_text(x + CARD_W / 2, PLAYER_HAND_Y + CARD_H + 16,
                           text=str(i + 1), fill=TEXT_DIM,
-                          font=("Helvetica", 10, "bold"))
+                          font=ui.font(10, "bold"))
         if not playable:
             self.hover.clear()
 
@@ -478,9 +489,9 @@ class BriscolaApp(tk.Tk):
 
     def _on_motion(self, event):
         if self.game_kind == ui.BURRACO and self.state == S_HUMAN:
-            burraco_view.on_motion(self, event.x, event.y)
+            burraco_view.on_motion(self, *ui.to_design(event.x, event.y))
             return
-        self._set_hover_index(self._hand_slot_at(event.x, event.y))
+        self._set_hover_index(self._hand_slot_at(*ui.to_design(event.x, event.y)))
 
     def _on_wheel(self, event):
         """The wheel walks along a Burraco hand too wide to show at once."""
@@ -575,20 +586,20 @@ class BriscolaApp(tk.Tk):
         c.create_rectangle(PANEL_X, 0, WIN_W, TABLE_H, fill=PANEL_BG, outline="")
 
         c.create_text(CONTENT_X, 26, text="BRISCOLA", anchor="w", fill=ACCENT,
-                      font=("Helvetica", 19, "bold"))
+                      font=ui.font(19, "bold"))
         c.create_text(CONTENT_X, 48, text="you vs. the computer", anchor="w",
-                      fill=TEXT_DIM, font=("Helvetica", 11))
+                      fill=TEXT_DIM, font=ui.font(11))
         self._panel_link(CONTENT_X + CONTENT_W, 26, "menu", "back",
                          self.show_menu)
 
         stats = self.records.stats(self.player)
         self._panel_box(66, 60)
         c.create_text(CONTENT_X + 10, 80, text="PLAYER", anchor="w",
-                      fill=TEXT_DIM, font=("Helvetica", 9, "bold"))
+                      fill=TEXT_DIM, font=ui.font(9, "bold"))
         c.create_text(CONTENT_X + 10, 99, text=self.player, anchor="w",
-                      fill=TEXT, font=("Helvetica", 14, "bold"))
+                      fill=TEXT, font=ui.font(14, "bold"))
         c.create_text(CONTENT_X + 10, 116, text=stats.summary(), anchor="w",
-                      fill=TEXT_DIM, font=("Helvetica", 10))
+                      fill=TEXT_DIM, font=ui.font(10))
         self._panel_link(CONTENT_X + CONTENT_W - 10, 80, "change",
                          "player", self._change_player)
 
@@ -597,11 +608,11 @@ class BriscolaApp(tk.Tk):
             f" - {RANK_NAMES[game.trump_card.rank]}"
         self._panel_box(134, 52)
         c.create_text(CONTENT_X + 10, 148, text="TRUMP SUIT", anchor="w",
-                      fill=TEXT_DIM, font=("Helvetica", 9, "bold"))
+                      fill=TEXT_DIM, font=ui.font(9, "bold"))
         suit_color = cardart.SUIT_COLORS_ON_DARK[suit]
         c.create_text(CONTENT_X + 10, 168,
                       text=f"{suit}{taken}", anchor="w",
-                      fill=suit_color, font=("Helvetica", 12, "bold"))
+                      fill=suit_color, font=ui.font(12, "bold"))
         cardart.emblem(c, suit, CONTENT_X + CONTENT_W - 22, 158, 22, suit_color)
 
         self._score_box(194, "YOU", game.points[HUMAN])
@@ -609,20 +620,20 @@ class BriscolaApp(tk.Tk):
 
         c.create_text(CONTENT_X, 300,
                       text=f"Cards to draw: {game.cards_left}", anchor="w",
-                      fill=TEXT_DIM, font=("Helvetica", 10))
+                      fill=TEXT_DIM, font=ui.font(10))
         c.create_text(CONTENT_X, 316,
                       text=f"Tricks: {game.tricks_played}/{TRICKS_PER_GAME}"
                            f"   Still in play: {TOTAL_POINTS - sum(game.points)}",
-                      anchor="w", fill=TEXT_DIM, font=("Helvetica", 10))
+                      anchor="w", fill=TEXT_DIM, font=ui.font(10))
 
         c.create_text(CONTENT_X, 340, text="LAST TRICKS", anchor="w", fill=TEXT,
-                      font=("Helvetica", 9, "bold"))
+                      font=ui.font(9, "bold"))
         for row, (left, right) in enumerate(self.log_lines[:LOG_LINES]):
             y = 360 + row * 17
             c.create_text(CONTENT_X, y, text=left, anchor="w", fill=TEXT_DIM,
-                          font=("Helvetica", 10))
+                          font=ui.font(10))
             c.create_text(CONTENT_X + CONTENT_W, y, text=right, anchor="e",
-                          fill=TEXT, font=("Helvetica", 10, "bold"))
+                          fill=TEXT, font=ui.font(10, "bold"))
 
         self._panel_button(612, "New game", "new",
                            self.new_match if self.game_kind == ui.BURRACO
@@ -641,9 +652,9 @@ class BriscolaApp(tk.Tk):
         c = self.canvas
         self._panel_box(y, 44)
         c.create_text(CONTENT_X + 10, y + 15, text=title, anchor="w",
-                      fill=TEXT_DIM, font=("Helvetica", 9, "bold"))
+                      fill=TEXT_DIM, font=ui.font(9, "bold"))
         c.create_text(CONTENT_X + CONTENT_W - 10, y + 15, text=str(points),
-                      anchor="e", fill=TEXT, font=("Helvetica", 15, "bold"))
+                      anchor="e", fill=TEXT, font=ui.font(15, "bold"))
         bar_x1, bar_x2 = CONTENT_X + 10, CONTENT_X + CONTENT_W - 10
         bar_y = y + 32
         c.create_rectangle(bar_x1, bar_y, bar_x2, bar_y + 6,
@@ -674,8 +685,8 @@ class BriscolaApp(tk.Tk):
                                   outline=ACCENT if selected else "",
                                   width=2 if selected else 1, tags=(tag,))
         c.create_text(x + w / 2, y + h / 2, text=text, fill=fg,
-                      font=("Helvetica", font_size,
-                            "bold" if primary or selected else "normal"),
+                      font=ui.font(font_size,
+                                   "bold" if primary or selected else "normal"),
                       tags=(tag,))
         self._bind_click(tag, command)
         c.tag_bind(tag, "<Enter>", lambda _e: self._button_hover(rect, hover, True))
@@ -695,25 +706,25 @@ class BriscolaApp(tk.Tk):
 
         # The title follows the choice below it: this menu deals two games.
         c.create_text(MENU_CX, 300, text=ui.GAME_LABELS[self.game_kind].upper(),
-                      fill=ACCENT, font=("Helvetica", 44, "bold"))
+                      fill=ACCENT, font=ui.font(44, "bold"))
         c.create_text(MENU_CX, 338, text="you vs. the computer",
-                      fill=TEXT, font=("Helvetica", 13))
+                      fill=TEXT, font=ui.font(13))
 
         left = MENU_CX - MENU_COL_W / 2
         stats = self.records.stats(self.player)
         cardart.round_rect(c, left, 372, left + MENU_COL_W, 434, 8,
                            fill=PANEL_CARD, outline="")
         c.create_text(left + 14, 390, text="PLAYER", anchor="w", fill=TEXT_DIM,
-                      font=("Helvetica", 9, "bold"))
+                      font=ui.font(9, "bold"))
         c.create_text(left + 14, 409, text=self.player, anchor="w", fill=TEXT,
-                      font=("Helvetica", 15, "bold"))
+                      font=ui.font(15, "bold"))
         c.create_text(left + 14, 426, text=stats.summary(), anchor="w",
-                      fill=TEXT_DIM, font=("Helvetica", 10))
+                      fill=TEXT_DIM, font=ui.font(10))
         self._panel_link(left + MENU_COL_W - 14, 390, "change", "menu_player",
                          self._change_player)
 
         c.create_text(left, 458, text="GAME", anchor="w", fill=TEXT_DIM,
-                      font=("Helvetica", 9, "bold"))
+                      font=ui.font(9, "bold"))
         game_w = (MENU_COL_W - 8) / 2
         for index, kind in enumerate(ui.GAMES):
             self._button(left + index * (game_w + 8), 468, game_w, 34,
@@ -721,11 +732,11 @@ class BriscolaApp(tk.Tk):
                          lambda kind=kind: self.set_game(kind),
                          selected=(kind == self.game_kind))
         c.create_text(MENU_CX, 518, text=ui.GAME_BLURBS[self.game_kind],
-                      fill=TEXT_DIM, font=("Helvetica", 11))
+                      fill=TEXT_DIM, font=ui.font(11))
 
         if self.game_kind == ui.BURRACO:
             c.create_text(left, 540, text="PLAY UP TO", anchor="w",
-                          fill=TEXT_DIM, font=("Helvetica", 9, "bold"))
+                          fill=TEXT_DIM, font=ui.font(9, "bold"))
             pill = (MENU_COL_W - 8 * 3) / 4
             for index, target in enumerate(burraco_engine.TARGETS):
                 self._button(left + index * (pill + 8), 550, pill, 30,
@@ -737,7 +748,7 @@ class BriscolaApp(tk.Tk):
         else:
             difficulty_top = 540
         c.create_text(left, difficulty_top, text="DIFFICULTY", anchor="w",
-                      fill=TEXT_DIM, font=("Helvetica", 9, "bold"))
+                      fill=TEXT_DIM, font=ui.font(9, "bold"))
         levels = (ai.LEVELS if self.game_kind == ui.BRISCOLA
                   else burraco_view.burraco_ai.LEVELS)
         labels = (ai.LEVEL_LABELS if self.game_kind == ui.BRISCOLA
@@ -751,7 +762,7 @@ class BriscolaApp(tk.Tk):
                          selected=(level == self.difficulty))
         c.create_text(MENU_CX, difficulty_top + 60,
                       text=LEVEL_BLURBS[self.difficulty],
-                      fill=TEXT_DIM, font=("Helvetica", 11))
+                      fill=TEXT_DIM, font=ui.font(11))
 
         self._button(left, 622, MENU_COL_W, 42, "Start game", "menu_start",
                      self.start_game, primary=True, font_size=15)
@@ -764,7 +775,7 @@ class BriscolaApp(tk.Tk):
         c.create_text(MENU_CX, WIN_H - 26,
                       text="Enter = start    D = difficulty    "
                            "S = statistics    R = rules",
-                      fill=TEXT_DIM, font=("Helvetica", 10))
+                      fill=TEXT_DIM, font=ui.font(10))
 
     def _draw_menu_fan(self):
         """A spread of cards as the header image."""
@@ -784,7 +795,7 @@ class BriscolaApp(tk.Tk):
     def _panel_link(self, x, y, text, key, command):
         tag = f"link_{key}"
         item = self.canvas.create_text(x, y, text=text, anchor="e", fill=ACCENT,
-                                       font=("Helvetica", 10, "underline"),
+                                       font=ui.font(10, "underline"),
                                        tags=(tag,))
         self._bind_click(tag, command)
         self.canvas.tag_bind(tag, "<Enter>",
@@ -797,7 +808,7 @@ class BriscolaApp(tk.Tk):
         c = self.canvas
         c.create_rectangle(0, TABLE_H, WIN_W, WIN_H, fill=FELT_DARK, outline="")
         c.create_text(16, TABLE_H + STATUS_H / 2, text=self.status_text,
-                      anchor="w", fill=TEXT, font=("Helvetica", 13))
+                      anchor="w", fill=TEXT, font=ui.font(13))
         # render() runs before the timer is armed, so key off the state.
         if self.game_kind == ui.BURRACO:
             hint = ("click cards to pick them - H hide the hand"
@@ -807,7 +818,7 @@ class BriscolaApp(tk.Tk):
         else:
             hint = "keys: 1 2 3 play - N new - M menu - S stats - D difficulty"
         c.create_text(WIN_W - 16, TABLE_H + STATUS_H / 2, text=hint,
-                      anchor="e", fill=TEXT_DIM, font=("Helvetica", 10))
+                      anchor="e", fill=TEXT_DIM, font=ui.font(10))
 
     def _log_trick(self, result):
         game = self.game
@@ -962,7 +973,7 @@ class BriscolaApp(tk.Tk):
         # Lay the text out off-screen first: measuring beats guessing at the
         # height, which left a gap between the text and the buttons.
         text = c.create_text(0, -2000, text=body, anchor="nw", fill=TEXT,
-                             font=("Helvetica", 12), justify="left")
+                             font=ui.font(12), justify="left")
         left, top, right, bottom = c.bbox(text)
         width = max(360, min(620, right - left + 56))
         height = 62 + (bottom - top) + 24 + 52
@@ -974,7 +985,7 @@ class BriscolaApp(tk.Tk):
         cardart.round_rect(c, x, y, x + width, y + height, 12,
                            fill=PANEL_BG, outline=ACCENT, width=2)
         c.create_text(x + 28, y + 34, text=title, anchor="w", fill=ACCENT,
-                      font=("Helvetica", 18, "bold"))
+                      font=ui.font(18, "bold"))
         c.coords(text, x + 28, y + 58)
         c.tag_raise(text)
 
@@ -1011,7 +1022,8 @@ class BriscolaApp(tk.Tk):
         window.title(f"Statistics - {self.player}")
         window.configure(bg=PANEL_BG)
         window.resizable(False, False)
-        canvas = tk.Canvas(window, width=STATS_W, height=STATS_H, bg=PANEL_BG,
+        canvas = tk.Canvas(window, width=int(STATS_W * ui.SCALE),
+                           height=int(STATS_H * ui.SCALE), bg=PANEL_BG,
                            highlightthickness=0)
         canvas.pack()
         window.bind("<Escape>", lambda _e: self._close_stats_window())
@@ -1030,6 +1042,8 @@ class BriscolaApp(tk.Tk):
                         self.records.stats(self.player),
                         self.records.matches(self.player),
                         self.records.path, self.records.text_path)
+        if ui.SCALE != 1.0:
+            self.stats_canvas.scale("all", 0, 0, ui.SCALE, ui.SCALE)
 
     # --- input ------------------------------------------------------------
 
@@ -1080,9 +1094,9 @@ def draw_statistics(canvas, player, stats, matches, json_path, text_path):
     canvas.delete("all")
     canvas.create_rectangle(0, 0, STATS_W, STATS_H, fill=PANEL_BG, outline="")
     canvas.create_text(24, 30, text="STATISTICS", anchor="w", fill=ACCENT,
-                       font=("Helvetica", 18, "bold"))
+                       font=ui.font(18, "bold"))
     canvas.create_text(STATS_W - 24, 30, text=player, anchor="e", fill=TEXT,
-                       font=("Helvetica", 14, "bold"))
+                       font=ui.font(14, "bold"))
 
     tiles = [
         ("Played", str(stats.played)),
@@ -1098,35 +1112,35 @@ def draw_statistics(canvas, player, stats, matches, json_path, text_path):
         cardart.round_rect(canvas, x, 56, x + tile_w, 116, 8,
                            fill=PANEL_CARD, outline="")
         canvas.create_text(x + tile_w / 2, 74, text=title, fill=TEXT_DIM,
-                           font=("Helvetica", 9))
+                           font=ui.font(9))
         canvas.create_text(x + tile_w / 2, 98, text=value, fill=TEXT,
-                           font=("Helvetica", 17, "bold"))
+                           font=ui.font(17, "bold"))
 
     canvas.create_text(24, 138, text=f"Current streak: {stats.streak_text()}",
-                       anchor="w", fill=TEXT, font=("Helvetica", 11))
+                       anchor="w", fill=TEXT, font=ui.font(11))
     canvas.create_text(24, 158,
                        text=f"Best winning streak: {stats.best_streak}",
-                       anchor="w", fill=TEXT_DIM, font=("Helvetica", 11))
+                       anchor="w", fill=TEXT_DIM, font=ui.font(11))
 
     by_level = "  ".join(
         f"{ai.LEVEL_LABELS.get(level, level)} {won}/{total}"
         for level, (won, total) in sorted(stats.by_difficulty.items())
     ) or "-"
     canvas.create_text(24, 178, text=f"Wins by difficulty: {by_level}",
-                       anchor="w", fill=TEXT_DIM, font=("Helvetica", 11))
+                       anchor="w", fill=TEXT_DIM, font=ui.font(11))
 
     canvas.create_text(24, 208, text="RECENT MATCHES", anchor="w", fill=TEXT,
-                       font=("Helvetica", 9, "bold"))
+                       font=ui.font(9, "bold"))
     headers = [(24, "date"), (170, "result"), (250, "score"),
                (360, "difficulty"), (470, "opened")]
     for x, label in headers:
         canvas.create_text(x, 228, text=label, anchor="w", fill=TEXT_DIM,
-                           font=("Helvetica", 9))
+                           font=ui.font(9))
 
     recent = list(reversed(matches))[:STATS_ROWS]
     if not recent:
         canvas.create_text(24, 252, text="No games recorded yet.", anchor="w",
-                           fill=TEXT_DIM, font=("Helvetica", 11))
+                           fill=TEXT_DIM, font=ui.font(11))
     for row, match in enumerate(recent):
         y = 250 + row * 21
         if row % 2 == 0:
@@ -1141,14 +1155,14 @@ def draw_statistics(canvas, player, stats, matches, json_path, text_path):
                  (470, match.opened, TEXT_DIM)]
         for x, text, fill in cells:
             canvas.create_text(x, y, text=text, anchor="w", fill=fill,
-                               font=("Helvetica", 10))
+                               font=ui.font(10))
 
     canvas.create_text(24, STATS_H - 44, text="Records are saved to:", anchor="w",
-                       fill=TEXT_DIM, font=("Helvetica", 9, "bold"))
+                       fill=TEXT_DIM, font=ui.font(9, "bold"))
     canvas.create_text(24, STATS_H - 28, text=str(json_path), anchor="w",
-                       fill=TEXT_DIM, font=("Helvetica", 9))
+                       fill=TEXT_DIM, font=ui.font(9))
     canvas.create_text(24, STATS_H - 14, text=str(text_path), anchor="w",
-                       fill=TEXT_DIM, font=("Helvetica", 9))
+                       fill=TEXT_DIM, font=ui.font(9))
 
 
 def main():

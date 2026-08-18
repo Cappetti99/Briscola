@@ -35,6 +35,10 @@ Then:
 conda run -n briscola python main.py
 ```
 
+The window sizes itself to the screen: everything is drawn at one design size
+and the canvas is scaled to whatever fits, between 0.65 and 1.7 of it. On a
+1710x1112 screen that gives a 1500x971 window; on a 1280x800 laptop, 1019x660.
+
 Nothing outside the standard library is required — only Python 3.10+ (for the
 `X | None` type syntax) and Tk, both provided by the environment file.
 
