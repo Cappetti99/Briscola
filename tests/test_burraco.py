@@ -774,14 +774,18 @@ def test_a_position_is_worth_more_with_the_meld_on_the_table():
     from cardgames.burraco import ai as burraco_ai
 
     game = Game(seed=5, first_player=HUMAN)
+    game.draw(HUMAN)
+    # Both readings taken after the draw: drawing adds a card, and a card in
+    # hand counts against you, so measuring across it compares two positions
+    # that differ in more than the meld.
     game.hands[HUMAN] = [Card(5, "Hearts"), Card(6, "Hearts"),
                          Card(7, "Hearts"), Card(KING, "Clubs")]
     in_hand = burraco_ai.position_value(game, HUMAN)
 
-    game.draw(HUMAN)
     game.lay_meld(HUMAN, [Card(5, "Hearts"), Card(6, "Hearts"),
                           Card(7, "Hearts")])
-    assert burraco_ai.position_value(game, HUMAN) > in_hand
+    assert burraco_ai.position_value(game, HUMAN) > in_hand, \
+        "the same cards are worth more on the table than in the hand"
 
 
 if __name__ == "__main__":
