@@ -288,6 +288,25 @@ def _card_to_discard(game: Game, player: int, level: str = NORMAL) -> Card:
                key=lambda card: _keep_score(game, player, hand, card, level))
 
 
+def reading_of_opponent(game: Game, player: int, card: Card) -> int:
+    """What the opponent's own discards and takes say about this card.
+
+    Everything here is public: the pile is face up and taken whole, so both
+    sides can see what the other threw away and what they gathered up. A rank
+    the opponent has thrown is one they do not want; a rank they took is one
+    they were collecting.
+    """
+    other = 1 - player
+    if any(thrown.rank == card.rank for thrown in game.thrown[other]):
+        return -1
+    for got in game.taken[other]:
+        if got.rank == card.rank:
+            return 1
+        if got.suit == card.suit and 0 < abs(got.rank - card.rank) <= 2:
+            return 1
+    return 0
+
+
 def _keep_score(game: Game, player: int, hand: list[Card], card: Card,
                 level: str = NORMAL) -> tuple:
     """How much we want to keep a card. Lowest gets thrown."""
@@ -303,4 +322,13 @@ def _keep_score(game: Game, player: int, hand: list[Card], card: Card,
 
     # Among equally useless cards, throw the dearest: it is the one that hurts
     # most if it is still in hand when the hand ends.
+    #
+    # `reading_of_opponent` was tried here as a tie-break ahead of this one,
+    # so that between two cards we were throwing anyway the safer went first.
+    # Measured over sixty deals with one seat reading and the other blind, and
+    # then with the seats swapped, the reader took 48% and 49% of the points
+    # and lost on matches both ways. Withholding a card the opponent could use
+    # had already measured worse for the plainer reason: its points stay in
+    # your hand and count against you. The reading stays available, and the
+    # engine keeps the record it needs, but nothing here acts on it.
     return (want, -CARD_POINTS[card.rank])

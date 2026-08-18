@@ -386,6 +386,8 @@ class Game:
     phase: Turn = field(default_factory=Turn)
     closed_by: int | None = None
     exhausted: bool = False
+    thrown: list[list[Card]] = field(default_factory=list)
+    taken: list[list[Card]] = field(default_factory=list)
 
     def __post_init__(self):
         rng = random.Random(self.seed)
@@ -399,6 +401,10 @@ class Game:
         self.pot_taken = [False, False]
         self.melds = [[], []]
         self.discards = []
+        # What each player has thrown away and taken back is public: it is
+        # played face up, and either side may remember it.
+        self.thrown = [[], []]
+        self.taken = [[], []]
         self.turn = self.first_player
         self.phase = Turn()
 
@@ -445,6 +451,7 @@ class Game:
             raise RuntimeError("the discard pile is empty")
         taken, self.discards = self.discards, []
         self.hands[player].extend(taken)
+        self.taken[player].extend(taken)
         self.phase.drawn = True
         self.phase.took_pile = True
         return taken
@@ -516,6 +523,7 @@ class Game:
             raise Stranded(self._stranded_reason(player))
         self._take_from_hand(player, [card])
         self.discards.append(card)
+        self.thrown[player].append(card)
         self._after_hand_shrinks(player)
         if self.closed_by is None:
             self.turn = 1 - player

@@ -691,6 +691,41 @@ def test_the_normal_opponent_beats_the_random_one():
     assert share > 0.5, f"normal took only {share:.0%} of the points"
 
 
+def test_the_table_remembers_what_was_thrown_and_taken():
+    """Both are public: the pile is face up and it is taken whole."""
+    game = Game(seed=5, first_player=HUMAN)
+    game.draw(HUMAN)
+    first = game.hands[HUMAN][0]
+    game.discard(HUMAN, first)
+    assert game.thrown[HUMAN] == [first]
+    assert game.taken[HUMAN] == []
+
+    game.draw(AI)
+    second = game.hands[AI][0]
+    game.discard(AI, second)
+    assert game.thrown[AI] == [second]
+
+    taken = game.take_discards(HUMAN)
+    assert taken == [first, second]
+    assert game.taken[HUMAN] == [first, second]
+    assert game.discards == []
+
+
+def test_reading_the_opponent_from_the_public_record():
+    from cardgames.burraco import ai as burraco_ai
+
+    game = Game(seed=5, first_player=HUMAN)
+    game.thrown[AI] = [Card(9, "Hearts")]
+    game.taken[AI] = [Card(4, "Spades")]
+
+    # A rank they threw is one they do not want.
+    assert burraco_ai.reading_of_opponent(game, HUMAN, Card(9, "Clubs")) == -1
+    # A rank they gathered, or its neighbours in suit, they were collecting.
+    assert burraco_ai.reading_of_opponent(game, HUMAN, Card(4, "Clubs")) == 1
+    assert burraco_ai.reading_of_opponent(game, HUMAN, Card(6, "Spades")) == 1
+    assert burraco_ai.reading_of_opponent(game, HUMAN, Card(KING, "Clubs")) == 0
+
+
 if __name__ == "__main__":
     failures = 0
     for name, fn in sorted(globals().items()):
