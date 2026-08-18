@@ -5,12 +5,16 @@ from collections import Counter
 
 from ..cards import RANKS, SUITS, Card
 from .engine import (AI, BURRACO_SIZE, MIN_MELD, CARD_POINTS, Game,
-                     InvalidMeld, Meld, Stranded, build_meld, can_extend,
+                     InvalidMeld, Meld, Stranded, Turn, build_meld, can_extend,
                      is_wild, wild_stands_for)
 
-EASY, NORMAL = "easy", "normal"
+EASY, NORMAL, HARD = "easy", "normal", "hard"
+
+# HARD is built and playable — `take_turn(game, player, HARD)` searches the
+# whole turn — but it is not offered, because it loses. See the note over
+# `search_turn` at the foot of this module for the measurements.
 LEVELS = (EASY, NORMAL)
-LEVEL_LABELS = {EASY: "Easy", NORMAL: "Normal"}
+LEVEL_LABELS = {EASY: "Easy", NORMAL: "Normal", HARD: "Expert (experimental)"}
 
 # There is no expert level here, and the omission is deliberate. Several were
 # tried and measured against Normal over eighty hands apiece, each one played
@@ -47,6 +51,9 @@ def take_turn(game: Game, player: int, level: str = NORMAL,
     rng = rng or random.Random()
     moves = []
 
+    if level == HARD:
+        return _play_searched_turn(game, player)
+
     moves.append(_draw_phase(game, player, level))
     if game.game_over:
         return moves
@@ -69,6 +76,40 @@ def take_turn(game: Game, player: int, level: str = NORMAL,
         game.end_turn(player)
         moves.append("ends with an empty hand")
     return moves
+
+
+def _play_searched_turn(game: Game, player: int) -> list[str]:
+    """Play the turn the search picked, falling back if it finds nothing."""
+    plan = search_turn(game, player)
+    if not plan:
+        return [_draw_phase(game, player, NORMAL)]
+
+    said = []
+    for kind, payload in plan:
+        try:
+            _apply(game, player, (kind, payload))
+        except (RuntimeError, InvalidMeld, Stranded):
+            continue
+        if kind == "draw":
+            said.append("draws a card")
+        elif kind == "pile":
+            said.append("takes the pile")
+        elif kind == "meld":
+            said.append(f"lays down {len(payload)} cards")
+        else:
+            said.append(f"discards {payload}")
+        if kind in ("draw", "pile"):
+            _substitutions(game, player)
+            _extend_everything(game, player)
+    if game.hands[player] and game.turn == player and not game.game_over:
+        try:
+            game.discard(player, _card_to_discard(game, player))
+            said.append("discards")
+        except (RuntimeError, Stranded):
+            pass
+    if not game.hands[player] and game.turn == player and not game.game_over:
+        game.end_turn(player)
+    return said
 
 
 # --- drawing --------------------------------------------------------------
@@ -368,3 +409,169 @@ def _keep_score(game: Game, player: int, hand: list[Card], card: Card,
     # your hand and count against you. The reading stays available, and the
     # engine keeps the record it needs, but nothing here acts on it.
     return (want, -CARD_POINTS[card.rank])
+
+
+# --- searching the turn ---------------------------------------------------
+#
+# Every attempt above bolts another rule onto a turn played greedily, and six
+# of seven measured worse. This tries the other thing: one objective, and a
+# choice between the turns actually available — draw or take the pile, lay
+# down or hold, and which card to let go — with material and closing weighed
+# inside the objective rather than patched on afterwards.
+#
+# It loses too: 46% of the points against Normal over forty hands played from
+# both seats, and 15-25 on matches. Crediting half-built melds in the
+# objective, which was the obvious flaw — only finished melds scored, so the
+# search would throw one of a pair without noticing — changed the points not
+# at all and the matches for the worse, 12-28.
+#
+# It is kept, unoffered, because it is the only frame here that could carry a
+# better evaluation: the machinery for trying turns and scoring positions is
+# the part that would be rebuilt otherwise. What it needs is an evaluation
+# worth searching with. Two candidates, neither tried: score a position by
+# playing it out to the end of the hand with the cheap policy, the way
+# Briscola's expert scores a world; or learn the weights from self-play rather
+# than guessing them, since every weight here was guessed and this whole
+# session says that guessing loses.
+
+HAND_LIABILITY = 1.0        # points in hand count against you at the end
+HAND_POTENTIAL = 0.45       # what the hand could still become, discounted
+PARTNER_VALUE = 0.30        # a pair, or two in a row: a meld half made
+CLOSING_PULL = 70           # being able to finish is worth more than it scores
+
+
+def _clone(game: Game) -> Game:
+    """A copy cheap enough to try a hundred turns on."""
+    copy = Game.__new__(Game)
+    copy.hands = [list(game.hands[0]), list(game.hands[1])]
+    copy.melds = [[Meld(list(m.cards), m.kind, m.wilds) for m in side]
+                  for side in game.melds]
+    copy.pots = [list(game.pots[0]), list(game.pots[1])]
+    copy.pot_taken = list(game.pot_taken)
+    copy.stock = list(game.stock)
+    copy.discards = list(game.discards)
+    copy.thrown = [list(game.thrown[0]), list(game.thrown[1])]
+    copy.taken = [list(game.taken[0]), list(game.taken[1])]
+    copy.turn = game.turn
+    copy.phase = Turn(drawn=game.phase.drawn, took_pile=game.phase.took_pile)
+    copy.closed_by = game.closed_by
+    copy.exhausted = game.exhausted
+    copy.first_player = game.first_player
+    copy.seed = game.seed
+    return copy
+
+
+def position_value(game: Game, player: int) -> float:
+    """What a position is worth to a player, beyond what it scores today.
+
+    `score` already counts the melds, the burracos, the cards left in hand and
+    the pot. Two things it cannot see matter as much: what the hand could
+    still put down, and how close the player is to ending the hand on their
+    own terms.
+    """
+    value = float(game.score(player))
+    hand = list(game.hands[player])
+    melded_here = set()
+    for cards in _find_melds(hand):
+        value += HAND_POTENTIAL * _meld_worth(cards)
+        melded_here.update(id(card) for card in cards)
+
+    # Credit what is half built as well. Without this the search throws away
+    # one of a pair without noticing, since only finished melds score, and it
+    # loses to the plain rule it was meant to beat.
+    rest = [card for card in hand if id(card) not in melded_here]
+    for index, card in enumerate(rest):
+        if is_wild(card):
+            continue
+        for other in rest[index + 1:]:
+            if is_wild(other):
+                continue
+            pair = other.rank == card.rank
+            run = other.suit == card.suit and abs(other.rank - card.rank) == 1
+            if pair or run:
+                value += PARTNER_VALUE * CARD_POINTS[card.rank]
+                break
+    if game.may_close(player):
+        value += max(0, CLOSING_PULL - 8 * len(game.hands[player]))
+    return value
+
+
+def _turn_plans(game: Game, player: int):
+    """Every turn worth trying, as a list of moves to play out."""
+    draws = []
+    if game.stock:
+        draws.append(("draw", None))
+    if game.discards:
+        draws.append(("pile", None))
+
+    for draw in draws:
+        after_draw = _clone(game)
+        try:
+            _apply(after_draw, player, draw)
+        except (RuntimeError, InvalidMeld, Stranded):
+            continue
+
+        melds = _find_melds(list(after_draw.hands[player]))
+        clean = [cards for cards in melds
+                 if not any(is_wild(card) for card in cards)]
+        for lay in ({"all": melds, "clean": clean, "none": []}).values():
+            yield [draw] + [("meld", cards) for cards in lay]
+
+
+def _apply(game: Game, player: int, move) -> None:
+    kind, payload = move
+    if kind == "draw":
+        game.draw(player)
+    elif kind == "pile":
+        game.take_discards(player)
+    elif kind == "meld":
+        game.lay_meld(player, payload)
+    elif kind == "discard":
+        game.discard(player, payload)
+
+
+def search_turn(game: Game, player: int) -> list:
+    """Pick the turn that leaves the best position, discard included."""
+    best_moves, best_value = None, None
+
+    for plan in _turn_plans(game, player):
+        trial = _clone(game)
+        try:
+            for move in plan:
+                _apply(trial, player, move)
+        except (RuntimeError, InvalidMeld, Stranded):
+            continue
+
+        _extend_everything(trial, player)
+        for card in _discard_options(trial, player):
+            after = _clone(trial)
+            try:
+                after.discard(player, card)
+            except (RuntimeError, Stranded):
+                continue
+            value = position_value(after, player)
+            if best_value is None or value > best_value:
+                best_value = value
+                best_moves = plan + [("discard", card)]
+    return best_moves or []
+
+
+def _extend_everything(game: Game, player: int) -> None:
+    """Growing a meld banks points and never costs a card you wanted."""
+    for meld in list(game.melds[player]):
+        for card in list(game.hands[player]):
+            if can_extend(meld, card):
+                try:
+                    game.extend_meld(player, meld, [card])
+                except (InvalidMeld, Stranded, RuntimeError):
+                    continue
+
+
+def _discard_options(game: Game, player: int) -> list[Card]:
+    seen, out = set(), []
+    for card in game.hands[player]:
+        if card in seen:
+            continue
+        seen.add(card)
+        out.append(card)
+    return out

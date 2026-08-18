@@ -745,6 +745,45 @@ def test_reading_what_the_opponent_is_building():
     assert burraco_ai.opponent_interest(game, HUMAN, [JOKER]) > 0
 
 
+def test_the_searching_opponent_plays_legal_turns():
+    """Not offered as a level, but it must not be broken where it stands."""
+    import random
+
+    from cardgames.burraco import ai as burraco_ai
+    from collections import Counter as _Counter
+
+    for seed in range(6):
+        game = Game(seed=seed)
+        rng = random.Random(seed)
+        turns = 0
+        while not game.game_over and turns < 300:
+            level = burraco_ai.HARD if game.turn == AI else burraco_ai.NORMAL
+            burraco_ai.take_turn(game, game.turn, level, rng)
+            turns += 1
+        assert game.game_over, f"seed {seed}: never finished"
+
+        everywhere = _Counter(game.hands[0] + game.hands[1] + game.stock
+                              + game.discards + game.pots[0] + game.pots[1])
+        for melds in game.melds:
+            for meld in melds:
+                everywhere.update(meld.cards)
+        assert everywhere == _Counter(burraco_deck()), f"seed {seed}: cards lost"
+
+
+def test_a_position_is_worth_more_with_the_meld_on_the_table():
+    from cardgames.burraco import ai as burraco_ai
+
+    game = Game(seed=5, first_player=HUMAN)
+    game.hands[HUMAN] = [Card(5, "Hearts"), Card(6, "Hearts"),
+                         Card(7, "Hearts"), Card(KING, "Clubs")]
+    in_hand = burraco_ai.position_value(game, HUMAN)
+
+    game.draw(HUMAN)
+    game.lay_meld(HUMAN, [Card(5, "Hearts"), Card(6, "Hearts"),
+                          Card(7, "Hearts")])
+    assert burraco_ai.position_value(game, HUMAN) > in_hand
+
+
 if __name__ == "__main__":
     failures = 0
     for name, fn in sorted(globals().items()):
