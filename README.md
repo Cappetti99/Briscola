@@ -134,6 +134,7 @@ finish by discarding one card.
 | Take a pinella back | Pick the card it stands for, then `Take the pinella` |
 | Discard | Pick one card, then `Discard` |
 | Sort your hand | `Sort by suit` or `Sort by rank` |
+| Put the hand away | `Hide my hand`, or `H` |
 
 The hand is put back in the chosen order after every draw, every pile taken and
 every meld laid down, and wild cards sort to the end where they are easy to
@@ -149,8 +150,10 @@ arrows at either end.
 
 Melds stay inside their own band of the table: the cards shrink as the row
 fills so that a tableful never reaches down over the hand, where it could be
-neither read nor added to. They shrink only as far as they must, and never
-past the point of being readable.
+neither read nor added to. Shrinking is only the fallback, though — with many
+melds it makes them hard to read, so **the hand can be put away** and the melds
+take the lower table at full size. Sixteen melds are drawn at two thirds with
+the hand out, and full size with it hidden.
 
 Melds keep the order they are meant to be read in. A run reads along the
 sequence with the wild card sitting in the hole it fills — `5 · joker · 7`, not

@@ -72,6 +72,7 @@ class BriscolaApp(tk.Tk):
         self.hovered: int | None = None
         self.sort_mode = "suit"
         self.hand_first = 0
+        self.hand_hidden = False
 
         self.game: Game | None = None
         self.state = S_MENU
@@ -129,6 +130,7 @@ class BriscolaApp(tk.Tk):
             self.game = burraco_engine.Game(first_player=self.next_leader)
             self.hovered = None
             self.hand_first = 0
+            self.hand_hidden = False
             self.game.sort_hand(HUMAN, self.sort_mode)
             self.next_leader = 1 - self.next_leader
             who = ("you start" if self.game.turn == HUMAN
@@ -761,7 +763,8 @@ class BriscolaApp(tk.Tk):
                       anchor="w", fill=TEXT, font=("Helvetica", 13))
         # render() runs before the timer is armed, so key off the state.
         if self.game_kind == ui.BURRACO:
-            hint = "click cards to pick them - N new hand - M menu - S stats"
+            hint = ("click cards to pick them - H hide the hand"
+                    " - N new hand - M menu - S stats")
         elif self.state in (S_SHOW, S_AI):
             hint = "click or space to carry on"
         else:
@@ -992,6 +995,8 @@ class BriscolaApp(tk.Tk):
             self._skip_wait()
         elif char == "n":
             self.new_game()
+        elif char == "h" and self.game_kind == ui.BURRACO:
+            burraco_view.toggle_hand(self)
         elif char == "m":
             self.show_menu()
         elif char == "s":

@@ -229,7 +229,7 @@ def test_melds_never_reach_the_hand():
     for kind, count, size in feasible_tableaus():
         boxes, scale = burraco.meld_boxes([kind] * count, [size] * count,
                                           burraco.YOUR_MELD_Y,
-                                          burraco.YOUR_MELD_ROOM)
+                                          burraco.your_meld_room())
         bottom = max(box[1] + box[3] for box in boxes)
         assert bottom <= burraco.HAND_Y, (kind, count, size, bottom, scale)
 
@@ -243,15 +243,35 @@ def test_the_opponents_melds_stay_off_the_stock():
         assert bottom <= burraco.STOCK_Y, (kind, count, size, bottom, scale)
 
 
+def test_hiding_the_hand_gives_the_melds_the_room_back():
+    """Shrinking is the fallback; putting the hand away is the cure.
+
+    With many melds the cards shrink until they are hard to read, which is
+    the wrong trade — so the hand can step aside, and the melds take the
+    lower table at full size.
+    """
+    assert burraco.your_meld_room(True) > burraco.your_meld_room(False)
+
+    for count in (10, 16):
+        _boxes, cramped = burraco.meld_boxes(["set"] * count, [5] * count,
+                                             burraco.YOUR_MELD_Y,
+                                             burraco.your_meld_room(False))
+        _boxes, roomy = burraco.meld_boxes(["set"] * count, [5] * count,
+                                           burraco.YOUR_MELD_Y,
+                                           burraco.your_meld_room(True))
+        assert cramped < 1.0, f"{count} melds crowd the hand"
+        assert roomy == 1.0, f"{count} melds fit once the hand is away"
+
+
 def test_melds_shrink_only_as_much_as_they_must():
     _few, roomy = burraco.meld_boxes(["set"] * 3, [4] * 3,
                                      burraco.YOUR_MELD_Y,
-                                     burraco.YOUR_MELD_ROOM)
+                                     burraco.your_meld_room())
     assert roomy == 1.0, "a few melds are drawn full size"
 
     _many, tight = burraco.meld_boxes(["set"] * 16, [5] * 16,
                                       burraco.YOUR_MELD_Y,
-                                      burraco.YOUR_MELD_ROOM)
+                                      burraco.your_meld_room())
     assert tight < 1.0, "a tableful shrinks"
     assert tight >= burraco.MELD_SCALE_MIN, "but never past the floor"
 
@@ -259,7 +279,7 @@ def test_melds_shrink_only_as_much_as_they_must():
 def test_cards_of_a_shrunken_meld_still_step_apart():
     boxes, scale = burraco.meld_boxes(["run"] * 16, [7] * 16,
                                       burraco.YOUR_MELD_Y,
-                                      burraco.YOUR_MELD_ROOM)
+                                      burraco.your_meld_room())
     first = burraco.card_position(boxes[0], 0, scale)
     second = burraco.card_position(boxes[0], 1, scale)
     assert second[1] - first[1] >= 8, "a shrunken run must still be readable"

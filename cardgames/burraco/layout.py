@@ -4,7 +4,7 @@ Plain arithmetic, no Tkinter. Burraco lays out eleven overlapping cards and a
 row of melds of differing shapes, so the sums are worth checking on their own.
 """
 
-from ..ui import TABLE_W
+from ..ui import TABLE_H, TABLE_W
 
 HAND_W, HAND_H = 82, 124
 
@@ -106,8 +106,17 @@ def hand_slot_at(x: float, y: float, count: int,
 # Melds may not grow past their band: below it lies the hand, and cards on the
 # table that a hand covers can be neither read nor added to.
 MELD_SCALE_MIN = 0.55
-YOUR_MELD_ROOM = HAND_Y - 20 - YOUR_MELD_Y
 OPP_MELD_ROOM = STOCK_Y - 20 - OPP_MELD_Y
+
+
+def your_meld_room(hand_hidden: bool = False) -> float:
+    """How far down your melds may reach.
+
+    With the hand out of the way they take the whole lower table, so a full
+    tableau is drawn large again instead of shrinking to fit above it.
+    """
+    floor = TABLE_H if hand_hidden else HAND_Y
+    return floor - 20 - YOUR_MELD_Y
 
 
 def _place(kinds: list[str], sizes: list[int], top: float,

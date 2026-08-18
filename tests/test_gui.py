@@ -621,6 +621,58 @@ def test_moving_the_pointer_lifts_a_burraco_card():
         # and tests/test_layout.py does it exhaustively without a window.
 
 
+def test_hiding_the_hand_uncovers_the_melds():
+    from cardgames import ui
+    from cardgames.burraco import layout, view
+    from cardgames.burraco.engine import HUMAN as B_HUMAN
+
+    with app_with_records(start=False) as (app, _store, _tmp):
+        app.set_game(ui.BURRACO)
+        app.start_game()
+        assert wait_for(app, lambda: app.state == gui.S_HUMAN)
+        assert app.canvas.bbox("hand0") is not None, "the hand starts visible"
+
+        view.toggle_hand(app)
+        app.update()
+        assert app.hand_hidden
+        assert app.canvas.bbox("hand0") is None, "no card is drawn"
+        assert "burraco_hide" in app._buttons
+
+        # And a click where a card used to be does nothing.
+        count = len(app.game.hands[B_HUMAN])
+        x = int(layout.hand_x(count, 0) + 10)
+        y = int(layout.HAND_Y + 40)
+        assert view.pointed_card(app, x, y) is None
+        before = len(app.game.hands[B_HUMAN])
+        app.canvas.event_generate("<Button-1>", x=x, y=y)
+        app.update()
+        assert len(app.game.hands[B_HUMAN]) == before
+        assert app.selected == set()
+
+        view.toggle_hand(app)
+        app.update()
+        assert not app.hand_hidden
+        assert app.canvas.bbox("hand0") is not None, "and it comes back"
+
+
+def test_the_h_key_hides_the_hand():
+    from cardgames import ui
+
+    class Key:
+        def __init__(self, char):
+            self.char = char
+            self.keysym = char
+
+    with app_with_records(start=False) as (app, _store, _tmp):
+        app.set_game(ui.BURRACO)
+        app.start_game()
+        assert wait_for(app, lambda: app.state == gui.S_HUMAN)
+        app._on_key(Key("h"))
+        assert app.hand_hidden
+        app._on_key(Key("h"))
+        assert not app.hand_hidden
+
+
 if __name__ == "__main__":
     failures = 0
     for name, fn in sorted(globals().items()):

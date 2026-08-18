@@ -15,11 +15,12 @@ from .engine import (AI, HUMAN, InvalidMeld, Stranded, is_wild,
 from .layout import (BACK_H, BACK_STEP, BACK_W, CENTER_X, HAND_H, HAND_W,
                      HAND_Y, HOVER_LIFT, LIFT, MELD_H, MELD_W, MELD_X0,
                      OPP_HAND_Y, OPP_MELD_Y, PILE_X, STOCK_X, STOCK_Y,
-                     OPP_MELD_ROOM, YOUR_MELD_ROOM, YOUR_MELD_Y,
+                     OPP_MELD_ROOM, YOUR_MELD_Y, your_meld_room,
                      card_position, clamp_scroll, hand_slot_at, hand_x,
                      meld_boxes, visible_range, visible_slots)
 
 ACTIONS = ("draw", "pile", "meld", "swap", "discard", "end")
+HIDE_LABELS = {False: "Hide my hand", True: "Show my hand"}
 SORTS = ("suit", "rank")
 SORT_LABELS = {"suit": "Sort by suit", "rank": "Sort by rank"}
 HOVER_LIFT = 10
@@ -37,7 +38,7 @@ def draw(app):
 
     _draw_opponent(app, game)
     _draw_stock(app, game)
-    _draw_melds(app, game, HUMAN, YOUR_MELD_Y, YOUR_MELD_ROOM)
+    _draw_melds(app, game, HUMAN, YOUR_MELD_Y, your_meld_room(app.hand_hidden))
     _draw_hand(app, game)
 
 
@@ -123,6 +124,15 @@ def _draw_hand(app, game):
     count = len(hand)
     app.hand_first = clamp_scroll(count, app.hand_first)
 
+    if app.hand_hidden:
+        # Shrinking the melds to fit above the hand makes them unreadable once
+        # there are many; taking the hand away instead leaves them full size.
+        canvas.create_text(CENTER_X, TABLE_H - 26,
+                           text=f"your {count} cards are hidden"
+                                "   -   H, or the button, brings them back",
+                           fill=FELT_EDGE, font=("Helvetica", 12, "bold"))
+        return
+
     for index in visible_range(count, app.hand_first):
         x = hand_x(count, index, app.hand_first)
         card = hand[index]
@@ -171,6 +181,8 @@ def pointed_card(app, x, y):
     """The card under the pointer, once the window agrees we may pick one."""
     game = app.game
     if not game or app.overlay is not None or game.turn != HUMAN:
+        return None
+    if app.hand_hidden:
         return None
     return hand_slot_at(x, y, len(game.hands[HUMAN]), app.hand_first)
 
@@ -251,12 +263,25 @@ def draw_panel(app):
                     lambda key=key: _sort_and_redraw(app, key),
                     selected=(app.sort_mode == key), font_size=10)
 
-    canvas.create_text(CONTENT_X, sort_top + 50, text="LAST MOVES", anchor="w",
+    app._button(CONTENT_X, sort_top + 34, CONTENT_W, 28,
+                HIDE_LABELS[app.hand_hidden], "burraco_hide",
+                lambda: toggle_hand(app), selected=app.hand_hidden,
+                font_size=10)
+
+    canvas.create_text(CONTENT_X, sort_top + 84, text="LAST MOVES", anchor="w",
                        fill=TEXT, font=("Helvetica", 9, "bold"))
-    for row, line in enumerate(app.log_lines[:8]):
-        canvas.create_text(CONTENT_X, sort_top + 68 + row * 16,
+    for row, line in enumerate(app.log_lines[:7]):
+        canvas.create_text(CONTENT_X, sort_top + 102 + row * 16,
                            text=line[0] if isinstance(line, tuple) else line,
                            anchor="w", fill=TEXT_DIM, font=("Helvetica", 9))
+
+
+def toggle_hand(app):
+    """Put the hand away so the melds underneath can be seen and added to."""
+    app.hand_hidden = not app.hand_hidden
+    app.hovered = None
+    app.selected.clear()
+    app.render()
 
 
 def _sort_and_redraw(app, by):
@@ -280,7 +305,7 @@ def _is_suggested(app, key):
 # --- clicks ---------------------------------------------------------------
 
 def click_card(app, index):
-    if app.game.turn != HUMAN or app.game.game_over:
+    if app.game.turn != HUMAN or app.game.game_over or app.hand_hidden:
         return
     if index in app.selected:
         app.selected.discard(index)
