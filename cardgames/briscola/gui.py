@@ -73,6 +73,8 @@ class BriscolaApp(tk.Tk):
         self.sort_mode = "suit"
         self.hand_first = 0
         self.hand_hidden = False
+        self.target = burraco_engine.DEFAULT_TARGET
+        self.match: burraco_engine.Match | None = None
 
         self.game: Game | None = None
         self.state = S_MENU
@@ -86,6 +88,7 @@ class BriscolaApp(tk.Tk):
         self._anim_offset: tuple[float, float] | None = None
         self._anim_tag: str | None = None
         self._anim_seq = 0
+        self._new_match = True
         self._anim_afters: set[str] = set()
         self._buttons: dict[str, tuple[int, callable]] = {}
         self._click_serial: int | None = None
@@ -118,6 +121,11 @@ class BriscolaApp(tk.Tk):
 
     # --- game flow --------------------------------------------------------
 
+    def new_match(self):
+        """A fresh series, rather than the next hand of the one in progress."""
+        self._new_match = True
+        self.new_game()
+
     def new_game(self):
         trace(f"new game: {self.game_kind}")
         self._cancel_pending()
@@ -127,6 +135,9 @@ class BriscolaApp(tk.Tk):
         self._recorded = False
         self._anim_offset = None
         if self.game_kind == ui.BURRACO:
+            if self.match is None or self.match.over or self._new_match:
+                self.match = burraco_engine.Match(target=self.target)
+            self._new_match = False
             self.game = burraco_engine.Game(first_player=self.next_leader)
             self.hovered = None
             self.hand_first = 0
@@ -296,6 +307,15 @@ class BriscolaApp(tk.Tk):
     def _overlay_new_game(self):
         self.overlay = None
         self.new_game()
+
+    def _overlay_next_hand(self):
+        """Carry the running score into another hand of the same match."""
+        self.overlay = None
+        self.new_game()
+
+    def _overlay_new_match(self):
+        self.overlay = None
+        self.new_match()
 
     def _overlay_menu(self):
         self.overlay = None
@@ -604,7 +624,9 @@ class BriscolaApp(tk.Tk):
             c.create_text(CONTENT_X + CONTENT_W, y, text=right, anchor="e",
                           fill=TEXT, font=("Helvetica", 10, "bold"))
 
-        self._panel_button(612, "New game", "new", self.new_game, primary=True)
+        self._panel_button(612, "New game", "new",
+                           self.new_match if self.game_kind == ui.BURRACO
+                           else self.new_game, primary=True)
         self._panel_button(652, "Statistics", "stats", self.show_statistics)
         self._panel_button(688, f"Difficulty: {ai.LEVEL_LABELS[self.difficulty]}",
                            "level", self.cycle_difficulty)
@@ -701,19 +723,34 @@ class BriscolaApp(tk.Tk):
         c.create_text(MENU_CX, 518, text=ui.GAME_BLURBS[self.game_kind],
                       fill=TEXT_DIM, font=("Helvetica", 11))
 
-        c.create_text(left, 540, text="DIFFICULTY", anchor="w", fill=TEXT_DIM,
-                      font=("Helvetica", 9, "bold"))
+        if self.game_kind == ui.BURRACO:
+            c.create_text(left, 540, text="PLAY UP TO", anchor="w",
+                          fill=TEXT_DIM, font=("Helvetica", 9, "bold"))
+            pill = (MENU_COL_W - 8 * 3) / 4
+            for index, target in enumerate(burraco_engine.TARGETS):
+                self._button(left + index * (pill + 8), 550, pill, 30,
+                             "one hand" if target == 0 else str(target),
+                             f"target_{target}",
+                             lambda target=target: self.set_target(target),
+                             selected=(target == self.target), font_size=11)
+            difficulty_top = 594
+        else:
+            difficulty_top = 540
+        c.create_text(left, difficulty_top, text="DIFFICULTY", anchor="w",
+                      fill=TEXT_DIM, font=("Helvetica", 9, "bold"))
         levels = (ai.LEVELS if self.game_kind == ui.BRISCOLA
                   else burraco_view.burraco_ai.LEVELS)
         labels = (ai.LEVEL_LABELS if self.game_kind == ui.BRISCOLA
                   else burraco_view.burraco_ai.LEVEL_LABELS)
         pill_w = (MENU_COL_W - 8 * (len(levels) - 1)) / len(levels)
         for index, level in enumerate(levels):
-            self._button(left + index * (pill_w + 8), 550, pill_w, 34,
+            self._button(left + index * (pill_w + 8), difficulty_top + 10,
+                         pill_w, 34,
                          labels[level], f"level_{level}",
                          lambda level=level: self.set_difficulty(level),
                          selected=(level == self.difficulty))
-        c.create_text(MENU_CX, 600, text=LEVEL_BLURBS[self.difficulty],
+        c.create_text(MENU_CX, difficulty_top + 60,
+                      text=LEVEL_BLURBS[self.difficulty],
                       fill=TEXT_DIM, font=("Helvetica", 11))
 
         self._button(left, 622, MENU_COL_W, 42, "Start game", "menu_start",
@@ -838,28 +875,48 @@ class BriscolaApp(tk.Tk):
 
     def _finish_burraco(self):
         game = self.game
-        you, them = game.scores()
+        match = self.match
         if not self._recorded:
             self._recorded = True
-            self.records.add_match(
-                self.player, you, them, self.difficulty,
-                "you" if game.first_player == HUMAN else "computer",
-                game=ui.BURRACO)
-        winner = game.winner()
-        if winner is None:
-            title, msg = "Draw", f"Draw, {you} to {them}."
-        elif winner == HUMAN:
-            title, msg = "You win!", f"You win {you} to {them}."
-        else:
-            title, msg = "You lose", f"The computer wins {them} to {you}."
-        ended = ("closed the hand" if game.closed_by is not None
+            match.add_hand(game.scores())
+        you, them = game.scores()
+
+        ended = ("someone closed the hand" if game.closed_by is not None
                  else "the stock ran out")
+        hand = (f"This hand: {you} to {them}, because {ended}.\n"
+                f"Match after {match.hands} hand"
+                f"{'s' if match.hands != 1 else ''}: "
+                f"{match.totals[HUMAN]} to {match.totals[AI]}.")
+
+        if not match.over:
+            ahead = match.leader()
+            standing = ("level" if ahead is None
+                        else "you are ahead" if ahead == HUMAN
+                        else "the computer is ahead")
+            self.show_overlay(
+                "Hand over",
+                f"{hand}\n\nPlaying to {match.target}: {standing}, "
+                f"and you need {match.to_go(HUMAN)} more.",
+                actions=(("Next hand", self._overlay_next_hand),
+                         ("Statistics", self.show_statistics),
+                         ("Menu", self._overlay_menu)))
+            return
+
+        self.records.add_match(
+            self.player, match.totals[HUMAN], match.totals[AI],
+            self.difficulty,
+            "you" if game.first_player == HUMAN else "computer",
+            game=ui.BURRACO)
+        winner = match.winner()
+        if winner is None:
+            title = "Draw"
+        elif winner == HUMAN:
+            title = "You win the match!"
+        else:
+            title = "You lose the match"
         stats = self.records.stats(self.player)
-        self.show_overlay(title,
-                          f"{msg}\n\nThe hand ended because "
-                          f"{'someone ' if game.closed_by is not None else ''}"
-                          f"{ended}.\n\n{self.player}: {stats.summary()}",
-                          actions=(("New hand", self._overlay_new_game),
+        self.show_overlay(title, f"{hand}\n\n{self.player}: {stats.summary()}",
+                          actions=(("New match", self._overlay_new_match),
                                    ("Statistics", self.show_statistics),
                                    ("Menu", self._overlay_menu)))
 
@@ -868,6 +925,11 @@ class BriscolaApp(tk.Tk):
         self.game_kind = kind
         if kind == ui.BURRACO and self.difficulty not in burraco_view.burraco_ai.LEVELS:
             self.difficulty = burraco_view.burraco_ai.NORMAL
+        self.render()
+
+    def set_target(self, target: int):
+        """How many points a match is played to; zero means a single hand."""
+        self.target = target
         self.render()
 
     def set_difficulty(self, level: str):
@@ -994,7 +1056,7 @@ class BriscolaApp(tk.Tk):
         elif char == " " or keysym in ("Return", "KP_Enter"):
             self._skip_wait()
         elif char == "n":
-            self.new_game()
+            self.new_match() if self.game_kind == ui.BURRACO else self.new_game()
         elif char == "h" and self.game_kind == ui.BURRACO:
             burraco_view.toggle_hand(self)
         elif char == "m":

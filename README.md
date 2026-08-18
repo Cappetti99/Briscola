@@ -135,6 +135,7 @@ finish by discarding one card.
 | Discard | Pick one card, then `Discard` |
 | Sort your hand | `Sort by suit` or `Sort by rank` |
 | Put the hand away | `Hide my hand`, or `H` |
+| Start a fresh match | `New game`, or `N` |
 
 The hand is put back in the chosen order after every draw, every pile taken and
 every meld laid down, and wild cards sort to the end where they are easy to
@@ -163,6 +164,15 @@ told apart at a glance.
 
 Clicking a meld only ever adds to it: buying the wild card back is a move of
 its own, on its own button.
+
+### Matches
+
+A hand of Burraco is usually one of several. The menu picks what a match is
+played to — 1000, 1500 or 2000 points, or a single hand — and hands are dealt
+one after another until someone passes the target **and is ahead**: arriving
+level settles nothing, so the match carries on into another hand. The panel
+carries the running totals beside each hand score, and the statistics record
+the match rather than each hand of it.
 
 The opponent has two levels, Easy and Normal. It counts what it can lay down
 before deciding whether the discard pile is worth taking, takes its own

@@ -9,7 +9,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from cardgames.burraco.engine import (AI, BURRACO_CLEAN, BURRACO_DIRTY,
                                       CARD_POINTS, CLOSING_BONUS, HAND_SIZE,
                                       HUMAN, POT_NOT_TAKEN, POT_SIZE, Game,
-                                      InvalidMeld, Meld, RUN, SET, Stranded,
+                                      InvalidMeld, Match, Meld, RUN, SET,
+                                      Stranded,
                                       build_meld,
                                       can_extend, is_wild, order_meld,
                                       the_wild, wild_stands_for)
@@ -600,6 +601,60 @@ def test_the_computer_never_strands_itself():
                     f"seed {seed}: player {player} left with no cards "
                     "and the hand still going")
         assert game.game_over, f"seed {seed}: never finished"
+
+
+# --- a match of several hands ---------------------------------------------
+
+def test_a_match_adds_the_hands_up():
+    match = Match(target=1000)
+    match.add_hand([300, 120])
+    match.add_hand([150, 400])
+    assert match.totals == [450, 520]
+    assert match.hands == 2
+    assert not match.over
+
+
+def test_a_match_ends_when_someone_passes_the_target_ahead():
+    match = Match(target=1000)
+    match.add_hand([1100, 300])
+    assert match.over
+    assert match.winner() == HUMAN
+
+
+def test_reaching_the_target_level_plays_another_hand():
+    """Ending level would settle a match nobody actually won."""
+    match = Match(target=1000)
+    match.add_hand([1200, 1200])
+    assert not match.over, "level at the target is not a result"
+    assert match.winner() is None
+
+    match.add_hand([0, 200])
+    assert match.over and match.winner() == AI
+
+
+def test_the_target_can_be_a_single_hand():
+    match = Match(target=0)
+    assert match.single_hand
+    assert not match.over
+    match.add_hand([200, 300])
+    assert match.over and match.winner() == AI
+
+
+def test_points_still_to_go():
+    match = Match(target=1500)
+    match.add_hand([400, 900])
+    assert match.to_go(HUMAN) == 1100
+    assert match.to_go(AI) == 600
+    match.add_hand([1200, 0])
+    assert match.to_go(HUMAN) == 0, "past the target, nothing left to get"
+
+
+def test_a_negative_hand_can_be_carried():
+    """Hands can score below zero, and the running total has to take it."""
+    match = Match(target=1000)
+    match.add_hand([-100, 200])
+    assert match.totals == [-100, 200]
+    assert not match.over
 
 
 if __name__ == "__main__":

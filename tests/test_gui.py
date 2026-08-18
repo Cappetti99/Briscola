@@ -469,6 +469,7 @@ def test_a_burraco_hand_played_only_by_clicking():
 
     with app_with_records(start=False) as (app, store, _tmp):
         app.set_game(ui.BURRACO)
+        app.set_target(0)          # one hand is the whole match, so it records
         app.start_game()
 
         turns = 0
@@ -671,6 +672,107 @@ def test_the_h_key_hides_the_hand():
         assert app.hand_hidden
         app._on_key(Key("h"))
         assert not app.hand_hidden
+
+
+def _finish_a_burraco_hand(app):
+    """Play a hand out with the opponent policy on both seats."""
+    from cardgames.burraco import ai as burraco_ai
+    from cardgames.burraco.engine import HUMAN as B_HUMAN
+
+    for _ in range(400):
+        app.update()
+        if app.game.game_over:
+            return True
+        if app.state != gui.S_HUMAN:
+            time.sleep(0.005)
+            continue
+        burraco_ai.take_turn(app.game, B_HUMAN, app.difficulty)
+        app.selected.clear()
+        app.after_move()
+    return False
+
+
+def test_a_match_runs_over_several_hands():
+    from cardgames import ui
+    from cardgames.burraco.engine import AI as B_AI, HUMAN as B_HUMAN
+
+    with app_with_records(start=False) as (app, store, _tmp):
+        app.set_game(ui.BURRACO)
+        app.set_target(1500)
+        app.start_game()
+        assert app.match.target == 1500 and app.match.hands == 0
+
+        assert _finish_a_burraco_hand(app), "the first hand did not end"
+        settle(app)
+        assert app.match.hands == 1, "the hand went into the match"
+        assert app.match.totals != [0, 0]
+
+        title, _body, actions = app.overlay
+        labels = [label for label, _cmd in actions]
+        if app.match.over:
+            assert labels[0] == "New match"
+            return                          # a runaway hand can settle it
+        assert title == "Hand over" and labels[0] == "Next hand"
+        assert store.matches("tester") == [], "a match is recorded when it ends"
+
+        totals = list(app.match.totals)
+        _label, next_hand = actions[0]
+        next_hand()
+        app.update()
+        assert app.match.hands == 1, "the same match carries on"
+        assert app.match.totals == totals, "and keeps its running score"
+        assert not app.game.game_over, "with a fresh hand dealt"
+
+
+def test_one_hand_is_a_match_of_its_own():
+    from cardgames import ui
+
+    with app_with_records(start=False) as (app, store, _tmp):
+        app.set_game(ui.BURRACO)
+        app.set_target(0)
+        app.start_game()
+        assert app.match.single_hand
+
+        assert _finish_a_burraco_hand(app)
+        settle(app)
+        assert app.match.over
+        assert [label for label, _cmd in app.overlay[2]][0] == "New match"
+        assert len(store.matches("tester")) == 1, "and it is recorded at once"
+        assert store.matches("tester")[0].you == app.match.totals[0]
+
+
+def test_the_menu_offers_the_targets():
+    from cardgames import ui
+    from cardgames.burraco.engine import TARGETS
+
+    with app_with_records(start=False) as (app, _store, _tmp):
+        app.set_game(ui.BURRACO)
+        app.update()
+        for target in TARGETS:
+            assert f"target_{target}" in app._buttons, target
+        _rect, choose = app._buttons["target_2000"]
+        choose()
+        app.update()
+        assert app.target == 2000
+        assert app.state == gui.S_MENU, "picking a target must not deal a hand"
+
+        # Briscola has its own finish line and no use for these.
+        app.set_game(ui.BRISCOLA)
+        app.update()
+        assert "target_2000" not in app._buttons
+
+
+def test_a_new_match_clears_the_running_score():
+    from cardgames import ui
+
+    with app_with_records(start=False) as (app, _store, _tmp):
+        app.set_game(ui.BURRACO)
+        app.set_target(1500)
+        app.start_game()
+        app.match.add_hand([700, 400])
+        app.new_match()
+        app.update()
+        assert app.match.totals == [0, 0] and app.match.hands == 0
 
 
 if __name__ == "__main__":

@@ -38,9 +38,59 @@ POT_NOT_TAKEN = -100
 
 SET, RUN = "set", "run"
 
+# A match is a series of hands played up to a target. One hand on its own is
+# the special case where the target is zero.
+TARGETS = (0, 1000, 1500, 2000)
+DEFAULT_TARGET = 1500
+
 # An ace closes a run either below the two or above the king, so runs are
 # checked on both readings.
 ACE_HIGH = KING + 1
+
+
+@dataclass
+class Match:
+    """The running score of a series of hands played to a target.
+
+    Reaching the target is not enough on its own: a player has to be ahead as
+    well, so a match that arrives level carries on into another hand rather
+    than ending in a draw nobody played for.
+    """
+
+    target: int = DEFAULT_TARGET
+    totals: list[int] = field(default_factory=lambda: [0, 0])
+    hands: int = 0
+
+    def add_hand(self, scores: list[int]) -> None:
+        for player in PLAYERS:
+            self.totals[player] += scores[player]
+        self.hands += 1
+
+    @property
+    def single_hand(self) -> bool:
+        return self.target <= 0
+
+    @property
+    def over(self) -> bool:
+        if self.single_hand:
+            return self.hands >= 1
+        if max(self.totals) < self.target:
+            return False
+        return self.totals[HUMAN] != self.totals[AI]
+
+    def leader(self) -> int | None:
+        if self.totals[HUMAN] == self.totals[AI]:
+            return None
+        return HUMAN if self.totals[HUMAN] > self.totals[AI] else AI
+
+    def winner(self) -> int | None:
+        return self.leader() if self.over else None
+
+    def to_go(self, player: int) -> int:
+        """Points still needed, which is what a player is really playing for."""
+        if self.single_hand:
+            return 0
+        return max(0, self.target - self.totals[player])
 
 
 def is_wild(card: Card) -> bool:

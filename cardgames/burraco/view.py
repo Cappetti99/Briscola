@@ -225,7 +225,12 @@ def draw_panel(app):
                             fill=PANEL_BG, outline="")
     canvas.create_text(CONTENT_X, 26, text="BURRACO", anchor="w", fill=ACCENT,
                        font=("Helvetica", 19, "bold"))
-    canvas.create_text(CONTENT_X, 48, text="you vs. the computer", anchor="w",
+    match = app.match
+    if match is None or match.single_hand:
+        subtitle = "you vs. the computer  -  one hand"
+    else:
+        subtitle = (f"match to {match.target}  -  hand {match.hands + 1}")
+    canvas.create_text(CONTENT_X, 48, text=subtitle, anchor="w",
                        fill=TEXT_DIM, font=("Helvetica", 11))
 
     y = 74
@@ -242,6 +247,12 @@ def draw_panel(app):
         canvas.create_text(CONTENT_X + 10, y + 38,
                            text=f"{burracos} burraco(s) - {pot}", anchor="w",
                            fill=TEXT_DIM, font=("Helvetica", 10))
+        if match is not None and not match.single_hand:
+            # This hand is the small number; the match is the one that counts.
+            canvas.create_text(CONTENT_X + CONTENT_W - 10, y + 38,
+                               text=f"match {match.totals[player]}", anchor="e",
+                               fill=ACCENT if match.totals[player] >= match.target
+                               else TEXT_DIM, font=("Helvetica", 10, "bold"))
         y += 62
 
     canvas.create_text(CONTENT_X, y + 6,
