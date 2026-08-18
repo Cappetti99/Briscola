@@ -23,15 +23,15 @@ from ..ui import (ACCENT, ACCENT_TEXT, CONTENT_W, CONTENT_X, FELT, FELT_DARK,
                   WIN_H, WIN_W)
 
 # Table layout.
-CARD_W, CARD_H = 94, 144
-HAND_GAP = 16
+CARD_W, CARD_H = 106, 162
+HAND_GAP = 18
 LIFT = 22
 CENTER_X = TABLE_W // 2
-AI_HAND_Y = 18
-TABLE_Y = 208
-PLAYER_HAND_Y = 486
-STOCK_X, STOCK_Y = 22, 250
-LOG_LINES = 8
+AI_HAND_Y = 24
+TABLE_Y = 250
+PLAYER_HAND_Y = 580
+STOCK_X, STOCK_Y = 26, 300
+LOG_LINES = 10
 
 # Pacing (ms). Both waits can be skipped with a click or the space bar.
 AI_DELAY = 550
@@ -76,6 +76,8 @@ class BriscolaApp(tk.Tk):
         self.difficulty = ai.NORMAL
         self.game_kind = ui.BRISCOLA
         self.selected: set[int] = set()
+        self.hovered: int | None = None
+        self.sort_mode = "suit"
 
         self.game: Game | None = None
         self.state = S_MENU
@@ -130,6 +132,8 @@ class BriscolaApp(tk.Tk):
         self._anim_offset = None
         if self.game_kind == ui.BURRACO:
             self.game = burraco_engine.Game(first_player=self.next_leader)
+            self.hovered = None
+            self.game.sort_hand(HUMAN, self.sort_mode)
             self.next_leader = 1 - self.next_leader
             who = ("you start" if self.game.turn == HUMAN
                    else "the computer starts")
@@ -329,8 +333,8 @@ class BriscolaApp(tk.Tk):
     def _draw_felt(self):
         c = self.canvas
         c.create_rectangle(0, 0, TABLE_W, TABLE_H, fill=FELT, outline="")
-        c.create_oval(CENTER_X - 176, TABLE_Y - 44, CENTER_X + 176,
-                      TABLE_Y + CARD_H + 100, fill=FELT_DARK, outline="")
+        c.create_oval(CENTER_X - 200, TABLE_Y - 48, CENTER_X + 200,
+                      TABLE_Y + CARD_H + 110, fill=FELT_DARK, outline="")
         c.create_text(TABLE_W - 14, AI_HAND_Y + CARD_H / 2, text="COMPUTER",
                       fill=FELT_EDGE, font=("Helvetica", 11, "bold"),
                       anchor="e", angle=90)
@@ -453,6 +457,8 @@ class BriscolaApp(tk.Tk):
         game = self.game
         if game is None or self.state != S_HUMAN or self.overlay is not None:
             return None
+        if self.game_kind != ui.BRISCOLA:
+            return None     # Burraco lays its hand out differently entirely
         if not PLAYER_HAND_Y - LIFT <= y <= PLAYER_HAND_Y + CARD_H:
             return None
         count = len(game.hands[HUMAN])
@@ -463,6 +469,9 @@ class BriscolaApp(tk.Tk):
         return None
 
     def _on_motion(self, event):
+        if self.game_kind == ui.BURRACO and self.state == S_HUMAN:
+            burraco_view.on_motion(self, event.x, event.y)
+            return
         self._set_hover_index(self._hand_slot_at(event.x, event.y))
 
     def _on_canvas_leave(self, _event=None):
@@ -601,11 +610,11 @@ class BriscolaApp(tk.Tk):
             c.create_text(CONTENT_X + CONTENT_W, y, text=right, anchor="e",
                           fill=TEXT, font=("Helvetica", 10, "bold"))
 
-        self._panel_button(502, "New game", "new", self.new_game, primary=True)
-        self._panel_button(542, "Statistics", "stats", self.show_statistics)
-        self._panel_button(578, f"Difficulty: {ai.LEVEL_LABELS[self.difficulty]}",
+        self._panel_button(612, "New game", "new", self.new_game, primary=True)
+        self._panel_button(652, "Statistics", "stats", self.show_statistics)
+        self._panel_button(688, f"Difficulty: {ai.LEVEL_LABELS[self.difficulty]}",
                            "level", self.cycle_difficulty)
-        self._panel_button(614, "Rules", "rules", self.show_rules)
+        self._panel_button(724, "Rules", "rules", self.show_rules)
 
     def _panel_box(self, y, height, fill=PANEL_CARD):
         return cardart.round_rect(self.canvas, CONTENT_X, y,
@@ -663,42 +672,42 @@ class BriscolaApp(tk.Tk):
     def _draw_menu(self):
         c = self.canvas
         c.create_rectangle(0, 0, WIN_W, WIN_H, fill=FELT, outline="")
-        c.create_oval(MENU_CX - 460, -190, MENU_CX + 460, 330,
+        c.create_oval(MENU_CX - 520, -200, MENU_CX + 520, 366,
                       fill=FELT_DARK, outline="")
 
         self._draw_menu_fan()
 
-        c.create_text(MENU_CX, 268, text="BRISCOLA", fill=ACCENT,
-                      font=("Helvetica", 44, "bold"))
-        c.create_text(MENU_CX, 306,
-                      text="you vs. the computer  -  first to 61 points wins",
+        # The title follows the choice below it: this menu deals two games.
+        c.create_text(MENU_CX, 300, text=ui.GAME_LABELS[self.game_kind].upper(),
+                      fill=ACCENT, font=("Helvetica", 44, "bold"))
+        c.create_text(MENU_CX, 338, text="you vs. the computer",
                       fill=TEXT, font=("Helvetica", 13))
 
         left = MENU_CX - MENU_COL_W / 2
         stats = self.records.stats(self.player)
-        cardart.round_rect(c, left, 334, left + MENU_COL_W, 396, 8,
+        cardart.round_rect(c, left, 372, left + MENU_COL_W, 434, 8,
                            fill=PANEL_CARD, outline="")
-        c.create_text(left + 14, 352, text="PLAYER", anchor="w", fill=TEXT_DIM,
+        c.create_text(left + 14, 390, text="PLAYER", anchor="w", fill=TEXT_DIM,
                       font=("Helvetica", 9, "bold"))
-        c.create_text(left + 14, 371, text=self.player, anchor="w", fill=TEXT,
+        c.create_text(left + 14, 409, text=self.player, anchor="w", fill=TEXT,
                       font=("Helvetica", 15, "bold"))
-        c.create_text(left + 14, 388, text=stats.summary(), anchor="w",
+        c.create_text(left + 14, 426, text=stats.summary(), anchor="w",
                       fill=TEXT_DIM, font=("Helvetica", 10))
-        self._panel_link(left + MENU_COL_W - 14, 352, "change", "menu_player",
+        self._panel_link(left + MENU_COL_W - 14, 390, "change", "menu_player",
                          self._change_player)
 
-        c.create_text(left, 414, text="GAME", anchor="w", fill=TEXT_DIM,
+        c.create_text(left, 458, text="GAME", anchor="w", fill=TEXT_DIM,
                       font=("Helvetica", 9, "bold"))
         game_w = (MENU_COL_W - 8) / 2
         for index, kind in enumerate(ui.GAMES):
-            self._button(left + index * (game_w + 8), 424, game_w, 34,
+            self._button(left + index * (game_w + 8), 468, game_w, 34,
                          ui.GAME_LABELS[kind], f"game_{kind}",
                          lambda kind=kind: self.set_game(kind),
                          selected=(kind == self.game_kind))
-        c.create_text(MENU_CX, 474, text=ui.GAME_BLURBS[self.game_kind],
+        c.create_text(MENU_CX, 518, text=ui.GAME_BLURBS[self.game_kind],
                       fill=TEXT_DIM, font=("Helvetica", 11))
 
-        c.create_text(left, 496, text="DIFFICULTY", anchor="w", fill=TEXT_DIM,
+        c.create_text(left, 540, text="DIFFICULTY", anchor="w", fill=TEXT_DIM,
                       font=("Helvetica", 9, "bold"))
         levels = (ai.LEVELS if self.game_kind == ui.BRISCOLA
                   else burraco_view.burraco_ai.LEVELS)
@@ -706,19 +715,19 @@ class BriscolaApp(tk.Tk):
                   else burraco_view.burraco_ai.LEVEL_LABELS)
         pill_w = (MENU_COL_W - 8 * (len(levels) - 1)) / len(levels)
         for index, level in enumerate(levels):
-            self._button(left + index * (pill_w + 8), 506, pill_w, 34,
+            self._button(left + index * (pill_w + 8), 550, pill_w, 34,
                          labels[level], f"level_{level}",
                          lambda level=level: self.set_difficulty(level),
                          selected=(level == self.difficulty))
-        c.create_text(MENU_CX, 556, text=LEVEL_BLURBS[self.difficulty],
+        c.create_text(MENU_CX, 600, text=LEVEL_BLURBS[self.difficulty],
                       fill=TEXT_DIM, font=("Helvetica", 11))
 
-        self._button(left, 576, MENU_COL_W, 42, "Start game", "menu_start",
+        self._button(left, 622, MENU_COL_W, 42, "Start game", "menu_start",
                      self.start_game, primary=True, font_size=15)
         half = (MENU_COL_W - 10) / 2
-        self._button(left, 626, half, 30, "Statistics", "menu_stats",
+        self._button(left, 676, half, 30, "Statistics", "menu_stats",
                      self.show_statistics)
-        self._button(left + half + 10, 626, half, 30, "Rules", "menu_rules",
+        self._button(left + half + 10, 676, half, 30, "Rules", "menu_rules",
                      self.show_rules)
 
         c.create_text(MENU_CX, WIN_H - 26,
@@ -730,11 +739,11 @@ class BriscolaApp(tk.Tk):
         """A spread of cards as the header image."""
         show = [Card(1, "Spades"), Card(KING, "Hearts"), Card(3, "Diamonds"),
                 Card(QUEEN, "Clubs"), Card(7, "Hearts")]
-        width, height, step = 104, 158, 74
+        width, height, step = 116, 176, 84
         start = MENU_CX - (len(show) - 1) * step / 2 - width / 2
         for index, card in enumerate(show):
             lift = abs(index - (len(show) - 1) / 2) * 9
-            cardart.draw_card(self.canvas, start + index * step, 62 + lift,
+            cardart.draw_card(self.canvas, start + index * step, 70 + lift,
                               width, height, card)
 
     def _button_hover(self, item, color, entering):

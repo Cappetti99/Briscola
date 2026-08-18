@@ -11,7 +11,10 @@ from cardgames.burraco.engine import (AI, BURRACO_CLEAN, BURRACO_DIRTY,
                                       HUMAN, POT_NOT_TAKEN, POT_SIZE, Game,
                                       InvalidMeld, Meld, RUN, SET, build_meld,
                                       can_extend, is_wild, wild_stands_for)
-from cardgames.cards import ACE, JOKER_RANK, KING, QUEEN, Card, burraco_deck
+from cardgames.cards import (ACE, JOKER_RANK, KING, QUEEN, SUITS, Card,
+                             burraco_deck)
+
+SUIT_ORDER = {suit: index for index, suit in enumerate(SUITS)}
 
 JOKER = Card(JOKER_RANK, "Joker")
 
@@ -413,6 +416,41 @@ def test_the_computer_only_makes_legal_melds():
                 assert rebuilt.kind == meld.kind
                 assert rebuilt.wilds == meld.wilds
                 assert len(meld) >= 3
+
+
+def test_sorting_a_hand_by_suit_and_by_rank():
+    game = Game(seed=4)
+    game.sort_hand(HUMAN, "suit")
+    hand = game.hands[HUMAN]
+    plain = [card for card in hand if not is_wild(card)]
+    suits = [card.suit for card in plain]
+    assert suits == sorted(suits, key=lambda s: SUIT_ORDER[s]), "suits grouped"
+    for first, second in zip(plain, plain[1:]):
+        if first.suit == second.suit:
+            assert first.rank <= second.rank, "and rising within a suit"
+
+    game.sort_hand(HUMAN, "rank")
+    plain = [card for card in game.hands[HUMAN] if not is_wild(card)]
+    ranks = [card.rank for card in plain]
+    assert ranks == sorted(ranks)
+
+
+def test_sorting_puts_the_wild_cards_last():
+    game = Game(seed=4)
+    for by in ("suit", "rank"):
+        game.sort_hand(HUMAN, by)
+        wilds = [index for index, card in enumerate(game.hands[HUMAN])
+                 if is_wild(card)]
+        tail = list(range(len(game.hands[HUMAN]) - len(wilds),
+                          len(game.hands[HUMAN])))
+        assert wilds == tail, f"{by}: pinelle belong at the end"
+
+
+def test_sorting_keeps_every_card():
+    game = Game(seed=4)
+    before = Counter(game.hands[HUMAN])
+    game.sort_hand(HUMAN, "rank")
+    assert Counter(game.hands[HUMAN]) == before
 
 
 if __name__ == "__main__":

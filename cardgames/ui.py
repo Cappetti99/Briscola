@@ -1,8 +1,8 @@
 """Look and feel shared by every game window."""
 
 # Window geometry.
-TABLE_W, TABLE_H = 800, 660
-PANEL_W = 292
+TABLE_W, TABLE_H = 940, 770
+PANEL_W = 320
 STATUS_H = 46
 WIN_W, WIN_H = TABLE_W + PANEL_W, TABLE_H + STATUS_H
 

@@ -13,25 +13,28 @@ from .engine import AI, HUMAN, InvalidMeld, is_wild, wild_stands_for
 
 # Card sizes: hands are eleven cards or more, so they are smaller than in
 # Briscola and they overlap.
-HAND_W, HAND_H = 66, 100
-HAND_STEP = 46
+HAND_W, HAND_H = 82, 124
+HAND_STEP = 58
 LIFT = 20
-MELD_W, MELD_H = 40, 60
-MELD_STEP = 17
-BACK_W, BACK_H = 52, 78
-BACK_STEP = 24
+MELD_W, MELD_H = 48, 72
+MELD_STEP = 21
+BACK_W, BACK_H = 62, 94
+BACK_STEP = 30
 
 CENTER_X = TABLE_W // 2
-OPP_HAND_Y = 12
-OPP_MELD_Y = 104
-STOCK_Y = 250
-YOUR_MELD_Y = 350
-HAND_Y = 520
+OPP_HAND_Y = 16
+OPP_MELD_Y = 128
+STOCK_Y = 310
+YOUR_MELD_Y = 420
+HAND_Y = 616
 
-STOCK_X = 40
-PILE_X = STOCK_X + 90
+STOCK_X = 44
+PILE_X = STOCK_X + 104
 
 ACTIONS = ("draw", "pile", "meld", "discard", "end")
+SORTS = ("suit", "rank")
+SORT_LABELS = {"suit": "Sort by suit", "rank": "Sort by rank"}
+HOVER_LIFT = 10
 ACTION_LABELS = {"draw": "Draw a card", "pile": "Take the pile",
                  "meld": "Lay down", "discard": "Discard", "end": "End turn"}
 
@@ -101,11 +104,11 @@ def _draw_melds(app, game, player, top):
                            font=("Helvetica", 11))
         return
 
-    x, y = 200, top
+    x, y = 240, top
     for index, meld in enumerate(melds):
         width = (len(meld) - 1) * MELD_STEP + MELD_W
         if x + width > TABLE_W - 20:
-            x, y = 200, y + MELD_H + 14
+            x, y = 240, y + MELD_H + 16
         tag = f"meld{player}_{index}"
         for offset, card in enumerate(meld.cards):
             cardart.draw_card(canvas, x + offset * MELD_STEP, y,
@@ -127,7 +130,8 @@ def _draw_hand(app, game):
     start = CENTER_X - total / 2
     for index, card in enumerate(hand):
         x = start + index * HAND_STEP
-        y = HAND_Y - (LIFT if index in app.selected else 0)
+        y = HAND_Y - (LIFT if index in app.selected
+                      else HOVER_LIFT if index == app.hovered else 0)
         tag = f"hand{index}"
         cardart.draw_card(canvas, x, y, HAND_W, HAND_H, card, tags=(tag,),
                           highlight=index in app.selected)
@@ -136,6 +140,45 @@ def _draw_hand(app, game):
     canvas.create_text(TABLE_W - 12, HAND_Y + HAND_H / 2,
                        text=f"YOU  {len(hand)} cards", anchor="e",
                        fill=FELT_EDGE, font=("Helvetica", 10, "bold"))
+
+
+def hand_slot_at(app, x, y):
+    """Which hand card the pointer is over, from the fixed fan geometry.
+
+    Like Briscola's, this deliberately ignores where a card has been lifted
+    to: an answer that changed as the card moved would have the lift and the
+    pointer chasing each other.
+    """
+    game = app.game
+    hand = game.hands[HUMAN] if game else []
+    if not hand or app.overlay is not None or game.turn != HUMAN:
+        return None
+    if not HAND_Y - LIFT <= y <= HAND_Y + HAND_H:
+        return None
+    total = (len(hand) - 1) * HAND_STEP + HAND_W
+    start = CENTER_X - total / 2
+    if not start <= x <= start + total:
+        return None
+    return min(int((x - start) // HAND_STEP), len(hand) - 1)
+
+
+def on_motion(app, x, y):
+    index = hand_slot_at(app, x, y)
+    if index == app.hovered:
+        return
+    for slot, lift in ((app.hovered, HOVER_LIFT), (index, -HOVER_LIFT)):
+        if slot is not None and slot not in app.selected:
+            app.canvas.move(f"hand{slot}", 0, lift)
+    app.hovered = index
+    app.canvas.config(cursor="hand2" if index is not None else "")
+
+
+def sort_hand(app, by):
+    """Put the hand in order and forget the selection, which moved with it."""
+    app.sort_mode = by
+    app.game.sort_hand(HUMAN, by)
+    app.selected.clear()
+    app.hovered = None
 
 
 def draw_panel(app):
@@ -176,13 +219,25 @@ def draw_panel(app):
                     lambda key=key: click_action(app, key),
                     primary=_is_suggested(app, key))
 
-    canvas.create_text(CONTENT_X, top + len(ACTIONS) * 38 + 14,
-                       text="LAST MOVES", anchor="w", fill=TEXT,
-                       font=("Helvetica", 9, "bold"))
-    for row, line in enumerate(app.log_lines[:6]):
-        canvas.create_text(CONTENT_X, top + len(ACTIONS) * 38 + 32 + row * 16,
+    sort_top = top + len(ACTIONS) * 38 + 8
+    half = (CONTENT_W - 8) / 2
+    for index, key in enumerate(SORTS):
+        app._button(CONTENT_X + index * (half + 8), sort_top, half, 28,
+                    SORT_LABELS[key], f"burraco_sort_{key}",
+                    lambda key=key: _sort_and_redraw(app, key),
+                    selected=(app.sort_mode == key), font_size=10)
+
+    canvas.create_text(CONTENT_X, sort_top + 50, text="LAST MOVES", anchor="w",
+                       fill=TEXT, font=("Helvetica", 9, "bold"))
+    for row, line in enumerate(app.log_lines[:8]):
+        canvas.create_text(CONTENT_X, sort_top + 68 + row * 16,
                            text=line[0] if isinstance(line, tuple) else line,
                            anchor="w", fill=TEXT_DIM, font=("Helvetica", 9))
+
+
+def _sort_and_redraw(app, by):
+    sort_hand(app, by)
+    app.render()
 
 
 def _is_suggested(app, key):
@@ -232,6 +287,7 @@ def click_meld(app, index):
             return
         app.note(f"You add {len(cards)} card(s) to a {meld.kind}")
     app.selected.clear()
+    sort_hand(app, app.sort_mode)
     app.after_move()
 
 
@@ -243,14 +299,17 @@ def click_action(app, key):
         if key == "draw":
             card = game.draw(HUMAN)
             app.note(f"You draw {card}")
+            sort_hand(app, app.sort_mode)
         elif key == "pile":
             taken = game.take_discards(HUMAN)
             app.note(f"You take the pile ({len(taken)} cards)")
+            sort_hand(app, app.sort_mode)
         elif key == "meld":
             cards = _selected_cards(app)
             meld = game.lay_meld(HUMAN, cards)
             app.note(f"You lay down a {meld.kind} of {len(meld)}")
             app.selected.clear()
+            sort_hand(app, app.sort_mode)
         elif key == "discard":
             cards = _selected_cards(app)
             if len(cards) != 1:

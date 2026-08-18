@@ -161,17 +161,28 @@ def _draw_minimal(canvas, x, y, w, h, card, color, tags):
 
 
 def _draw_joker(canvas, x, y, w, h, color, tags):
-    """A jester's cap: the one card that is not a rank in a suit."""
-    cx, cy = x + w * 0.5, y + h * 0.52
-    r = w * 0.30
-    canvas.create_polygon(cx - r, cy + r * 0.55, cx + r, cy + r * 0.55,
-                         cx + r * 0.72, cy - r * 0.15, cx, cy - r * 0.75,
-                         cx - r * 0.72, cy - r * 0.15,
-                         fill=color, outline=color, smooth=True, tags=tags)
-    for dx in (-1, 0, 1):
-        canvas.create_oval(cx + dx * r * 0.78 - r * 0.2, cy - r * 0.95 - r * 0.2,
-                           cx + dx * r * 0.78 + r * 0.2, cy - r * 0.95 + r * 0.2,
+    """A jester's cap: a headband, three points, a bell on each.
+
+    Drawn as separate straight-edged shapes rather than one smoothed blob,
+    which at hand size turned into an unreadable smudge.
+    """
+    cx, cy = x + w * 0.5, y + h * 0.56
+    r = w * 0.32
+    band_top = cy + r * 0.45
+    for lean, tip_x, tip_y in ((-1, cx - r * 1.05, cy - r * 0.85),
+                               (0, cx, cy - r * 1.25),
+                               (1, cx + r * 1.05, cy - r * 0.85)):
+        base = cx + lean * r * 0.52
+        canvas.create_polygon(base - r * 0.30, band_top,
+                             base + r * 0.30, band_top,
+                             tip_x, tip_y,
+                             fill=color, outline=color, tags=tags)
+        canvas.create_oval(tip_x - r * 0.20, tip_y - r * 0.20,
+                           tip_x + r * 0.20, tip_y + r * 0.20,
                            fill=color, outline=color, tags=tags)
+    round_rect(canvas, cx - r * 1.0, band_top,
+               cx + r * 1.0, band_top + r * 0.42, r * 0.18,
+               fill=color, outline=color, tags=tags)
 
 
 def _draw_pips(canvas, x, y, w, h, card, color, tags):

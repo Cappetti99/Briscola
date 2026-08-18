@@ -415,6 +415,24 @@ class Game:
         elif self.may_close(player):
             self.closed_by = player
 
+    # --- tidying ----------------------------------------------------------
+
+    def sort_hand(self, player: int, by: str = "suit") -> None:
+        """Put a hand in order: by suit, or by rank across the suits.
+
+        Wild cards go to the end either way, where they are easy to find and
+        hard to discard by accident.
+        """
+        order = {suit: index for index, suit in enumerate(SUITS)}
+
+        def key(card: Card):
+            wild = 1 if is_wild(card) else 0
+            if by == "rank":
+                return (wild, card.rank, order.get(card.suit, 9))
+            return (wild, order.get(card.suit, 9), card.rank)
+
+        self.hands[player].sort(key=key)
+
     # --- scoring ----------------------------------------------------------
 
     def score(self, player: int) -> int:
