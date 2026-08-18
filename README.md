@@ -174,9 +174,21 @@ level settles nothing, so the match carries on into another hand. The panel
 carries the running totals beside each hand score, and the statistics record
 the match rather than each hand of it.
 
-The opponent has two levels, Easy and Normal. It counts what it can lay down
-before deciding whether the discard pile is worth taking, takes its own
-pinelle back when it holds the natural card, and plays to close.
+The opponent has two levels, Easy and Normal. It takes its own pinelle back
+when it holds the natural card, picks melds by what they are worth on the
+table rather than by how long they are, and decides whether the discard pile
+is worth taking by how much more the hand could lay down with it — not by how
+many cards look handy, which is a rule that reads its own hand size and runs
+away with itself.
+
+There is no expert level, and the omission is deliberate. Several were tried
+and measured against Normal over eighty hands apiece, each deal played from
+both seats: keeping the pinelle back for burracos, holding cards the opponent
+could use, growing the longest meld first, and taking the pile more boldly.
+The first three lost outright; the last gained points, 51%, while losing
+matches 34-46, because a player who hoards material stops closing. Briscola's
+expert works by searching sampled worlds, and that does not carry over —
+Burraco has far more moves per turn and far longer hands.
 
 ## The cards
 

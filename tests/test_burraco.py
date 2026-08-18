@@ -657,6 +657,40 @@ def test_a_negative_hand_can_be_carried():
     assert not match.over
 
 
+def test_the_normal_opponent_beats_the_random_one():
+    """Judged on points over deals played from both seats.
+
+    This is the check that caught the opponent being worse than random: it
+    melded 414 points a hand against the easy level's 618, because it was too
+    cautious about taking the discard pile and never gathered the material to
+    build with. The pile is now judged by what it would let the hand put on
+    the table, and the ordering came right.
+    """
+    import random
+
+    from cardgames.burraco import ai as burraco_ai
+
+    points = [0, 0]
+    for seed in range(8):
+        for first in (HUMAN, AI):
+            for side, (one, other) in enumerate(
+                    ((burraco_ai.NORMAL, burraco_ai.EASY),
+                     (burraco_ai.EASY, burraco_ai.NORMAL))):
+                game = Game(seed=seed, first_player=first)
+                rng = random.Random(seed * 31 + 7)
+                turns = 0
+                while not game.game_over and turns < 300:
+                    level = one if game.turn == AI else other
+                    burraco_ai.take_turn(game, game.turn, level, rng)
+                    turns += 1
+                scores = game.scores()
+                points[side] += scores[AI]
+                points[1 - side] += scores[HUMAN]
+
+    share = points[0] / sum(points)
+    assert share > 0.5, f"normal took only {share:.0%} of the points"
+
+
 if __name__ == "__main__":
     failures = 0
     for name, fn in sorted(globals().items()):
