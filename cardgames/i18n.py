@@ -1,6 +1,9 @@
 """Italian presentation catalogue; game state and persisted identifiers stay stable."""
 import re
-import tkinter as tk
+try:
+    import tkinter as tk
+except ImportError:  # display-free test environments may not ship Tk
+    tk = None
 
 IT = {
 'Resume game': 'Riprendi partita', 'Hint': 'Consiglio', 'Review': 'Rivedi mosse',
@@ -220,16 +223,20 @@ def translate(text, language='en', italian_suits=False):
     return text
 
 
-class Canvas(tk.Canvas):
-    """Translate at the presentation boundary; records retain their raw values."""
-    def __init__(self, *args, translator=None, **kwargs):
-        self.translator = translator or (lambda text: text)
-        super().__init__(*args, **kwargs)
+if tk is not None:
+    class Canvas(tk.Canvas):
+        """Translate at the presentation boundary; records retain raw values."""
 
-    def create_text(self, *args, **kwargs):
-        if 'text' in kwargs and not kwargs.pop('literal', False):
-            kwargs['text'] = self.translator(kwargs['text'])
-        return super().create_text(*args, **kwargs)
+        def __init__(self, *args, translator=None, **kwargs):
+            self.translator = translator or (lambda text: text)
+            super().__init__(*args, **kwargs)
+
+        def create_text(self, *args, **kwargs):
+            if 'text' in kwargs and not kwargs.pop('literal', False):
+                kwargs['text'] = self.translator(kwargs['text'])
+            return super().create_text(*args, **kwargs)
+else:
+    Canvas = None
 
 IT.update({
     'Game': 'Gioco', 'End turn': 'Termina turno', 'your pot': 'tuo pozzetto',

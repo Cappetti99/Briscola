@@ -21,6 +21,7 @@ for resuming games, training and settings.
 - [Pacing and performance](#pacing-and-performance)
 - [Project layout](#project-layout)
 - [Tests](#tests)
+- [Continuous integration](#continuous-integration)
 - [Screenshots](#screenshots)
 - [Ideas for later](#ideas-for-later)
 
@@ -513,6 +514,21 @@ conda run -n briscola python tests/test_burraco.py
 `test_gui.py` drives the interface with real Tk mouse events, including whole
 hands of Burraco, Scopa and Tressette played only by clicking real controls. Its windows
 are parked off screen so they neither steal focus nor catch a stray click.
+
+## Continuous integration
+
+Every push to `main` and every pull request runs the display-free suite on
+Ubuntu, macOS and Windows with Python 3.10, 3.11 and 3.12. The workflow checks
+whitespace and Python syntax before running the tests through
+`tools/ci_tests.py`.
+
+The Tk tests remain separate because they need a real desktop session. Run them
+locally with:
+
+```bash
+conda run -n briscola python tests/test_gui.py
+conda run -n briscola python tests/test_features_gui.py
+```
 
 Each file runs as many tests as it defines — worth checking, since appending a
 test below the `if __name__ == "__main__"` block that runs them means it never
