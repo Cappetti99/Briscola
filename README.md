@@ -526,7 +526,7 @@ conda run -n briscola python tests/test_burraco.py
 | File | Tests | Time | Covers |
 | --- | --- | --- | --- |
 | `test_features.py` | 8 | < 1 s | Save round trips, corrupted saves, preferences, filtered stats and fair hints |
-| `test_features_gui.py` | 11 | a few seconds | Resume, training, settings, filters and worker cancellation |
+| `test_features_gui.py` | 12 | a few seconds | Resume, training, settings, filters and worker cancellation |
 | `test_catalog.py` | 3 | < 0.1 s | Shared metadata for all games and menu configuration |
 | `test_layout.py` | 40 | 0.05 s | Table geometry for all four games, with no window at all |
 | `test_records.py` | 7 | 0.05 s | The json store and the text log |
@@ -534,7 +534,7 @@ conda run -n briscola python tests/test_burraco.py
 | `test_scopa.py` | 59 | 11 s | Scopa rules, taking, the scope, the four points, the opponent |
 | `test_tressette.py` | 32 | 7 s | Tressette order, the suit obligation, thirds, declarations |
 | `test_engine.py` | 8 | 18 s | Briscola rules and the relative strength of the levels |
-| `test_gui.py` | 53 | 28 s | The window: event routing, turns, records |
+| `test_gui.py` | 51 | 28 s | The window: event routing, turns, records |
 
 `test_gui.py` drives the interface with real Tk mouse events, including whole
 hands of Burraco, Scopa and Tressette played only by clicking real controls. Its windows

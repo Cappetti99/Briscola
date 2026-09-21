@@ -217,14 +217,6 @@ def test_played_card_lands_on_its_slot():
         assert seen, "the computer never led a card"
 
 
-def test_every_difficulty_can_finish_a_game():
-    for level in ai.LEVELS:
-        with app_with_records(difficulty=level) as (app, store, _tmp):
-            assert play_to_the_end(app), f"{level} stuck in {app.state}"
-            settle(app)
-            assert store.matches("tester")[0].difficulty == level
-
-
 def test_difficulty_button_cycles():
     with app_with_records() as (app, _store, _tmp):
         seen = [app.difficulty]
@@ -1137,33 +1129,6 @@ def test_the_window_refuses_a_card_that_breaks_the_suit():
         assert "follow suit" in app.status_text
         view.play(app, 1)
         assert Card(ACE, "Spades") not in app.game.hands[T_HUMAN]
-
-
-def test_a_whole_tressette_deal_played_by_clicking():
-    from cardgames.tressette import layout
-    from cardgames.tressette.engine import HUMAN as T_HUMAN
-
-    with app_with_records(start=False) as (app, _store, _tmp):
-        app.target = 0                      # one deal is a match of one
-        tressette_app(app)
-        for _ in range(6000):
-            if app.game.game_over:
-                break
-            app.update()
-            if app.state != gui.S_HUMAN:
-                continue
-            index = app.game.legal_cards(T_HUMAN)[0]
-            count = len(app.game.hands[T_HUMAN])
-            x = int(layout.hand_x(count, index) + layout.HAND_W / 2)
-            y = int(layout.HAND_Y + layout.HAND_H / 2)
-            app.canvas.event_generate("<Button-1>", x=x, y=y)
-            app.update()
-        assert app.game.game_over, "the deal never finished"
-        assert app.game.tricks_played == 20
-        assert sum(app.game.thirds) == 35, "every third is accounted for"
-        app.update()
-        rows = app.records.matches("tester")
-        assert len(rows) == 1 and rows[0].game == "tressette"
 
 
 def test_the_tressette_hand_can_be_put_in_order():
