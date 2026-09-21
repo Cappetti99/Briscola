@@ -7,6 +7,7 @@ from tkinter import ttk
 from . import catalog, cardart, i18n, training, ui
 from .session import SessionStore
 from .replay import Replay, replay_path
+from .tutorials import steps_for
 from .preferences import Preferences, SPEEDS
 
 
@@ -32,12 +33,14 @@ class AppFeatures:
         self._worker_busy = False
         self._last_preference_state = None
         self._training_used = False
+        self._tutorial_index = 0
         self.toolbar = tk.Frame(self, bg=ui.PANEL_BG)
         self.toolbar.pack(fill='x')
         self.feature_buttons = []
         for label, command in [('Resume game', self.resume_game),
                                ('Hint', self.show_hint), ('Review', self.show_review),
                                ('Replay', self.show_replay),
+                               ('Tutorial', self.show_tutorial),
                                ('Settings', self.show_settings)]:
             button = tk.Button(self.toolbar, command=command, takefocus=True,
                                highlightthickness=0)
@@ -63,6 +66,8 @@ class AppFeatures:
                 enabled = self.state != 'menu' and self.game is not None and self.overlay is None
             elif label == 'Replay':
                 enabled = self.replay_file.exists() and self.overlay is None
+            elif label == 'Tutorial':
+                enabled = self.overlay is None
             button.configure(text=self.tr(label), state='normal' if enabled else 'disabled')
         self.training_label.configure(text=self.tr('Training') if self._training_used and self.state != 'menu' else '')
         cardart.DECK = self.deck_style
@@ -157,6 +162,27 @@ class AppFeatures:
             return
         lines = [f"{index + 1}. {event.text}" for index, event in enumerate(replay.visible_events()[-20:])]
         self.show_overlay('Replay', '\n'.join(lines))
+
+    def show_tutorial(self):
+        self._tutorial_index = 0
+        self._draw_tutorial()
+
+    def _draw_tutorial(self):
+        steps = steps_for(self.game_kind)
+        step = steps[self._tutorial_index]
+        actions = []
+        if self._tutorial_index + 1 < len(steps):
+            actions.append(('Next', self._next_tutorial))
+        actions.append(('Close', self.close_overlay))
+        self.show_overlay(
+            f"Tutorial · {step.title}",
+            f"Step {self._tutorial_index + 1} of {len(steps)}\n\n{step.body}",
+            actions=tuple(actions),
+        )
+
+    def _next_tutorial(self):
+        self._tutorial_index += 1
+        self._draw_tutorial()
 
     def show_hint(self):
         if self.overlay is not None:

@@ -215,6 +215,19 @@ def test_real_expert_moves_apply_for_all_search_games():
             assert app.sessions.load()['game_kind'] == kind
 
 
+def test_tutorial_advances_without_touching_the_game():
+    with app_with_records(start=False) as (app, _, _tmp):
+        app.set_game('briscola')
+        app.start_game()
+        app._cancel_pending()
+        before = app.game
+        app.show_tutorial()
+        assert app.overlay[0].startswith('Tutorial')
+        app._next_tutorial()
+        assert app._tutorial_index == 1
+        assert app.game is before
+
+
 if __name__ == '__main__':
     for name, fn in sorted(list(globals().items())):
         if name.startswith('test_') and callable(fn):

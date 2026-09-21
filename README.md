@@ -109,6 +109,9 @@ competitive records, including subsequent hands. A fresh match resets this flag.
 **Review** shows the last completed trick in Briscola/Tressette and recent moves
 in Scopa/Burraco. It does not undo moves or reveal hidden draws.
 
+**Tutorial** opens a short three-step lesson for the selected game. It can be
+opened from the menu or the table and never modifies a match or its records.
+
 Statistics starts filtered to the selected game. Use the game and difficulty
 selectors to narrow the results or choose **All games** for the overall record.
 Average and best points are omitted from that aggregate because the games use
