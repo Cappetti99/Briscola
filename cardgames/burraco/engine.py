@@ -16,6 +16,7 @@ from dataclasses import dataclass, field
 
 from ..cards import (ACE, JOKER_RANK, KING, RANKS, SUITS, Card,
                      burraco_deck)
+from ..match import Match          # noqa: F401  (re-exported for the window)
 
 HUMAN = 0
 AI = 1
@@ -34,63 +35,20 @@ CARD_POINTS = {JOKER_RANK: 30, 2: 20, ACE: 15,
 BURRACO_CLEAN = 200
 BURRACO_DIRTY = 100
 CLOSING_BONUS = 100
-POT_NOT_TAKEN = -100
+# Paid by a player who never took the pot, and by one who took it too late to
+# play it: a flat hundred either way, not the value of the cards it held.
+POT_PENALTY = -100
 
 SET, RUN = "set", "run"
 
-# A match is a series of hands played up to a target. One hand on its own is
-# the special case where the target is zero.
+# The targets a match may be played to; zero is a single hand. The running
+# score itself lives in `cardgames/match.py`, shared with Scopa.
 TARGETS = (0, 1000, 1500, 2000)
 DEFAULT_TARGET = 1500
 
 # An ace closes a run either below the two or above the king, so runs are
 # checked on both readings.
 ACE_HIGH = KING + 1
-
-
-@dataclass
-class Match:
-    """The running score of a series of hands played to a target.
-
-    Reaching the target is not enough on its own: a player has to be ahead as
-    well, so a match that arrives level carries on into another hand rather
-    than ending in a draw nobody played for.
-    """
-
-    target: int = DEFAULT_TARGET
-    totals: list[int] = field(default_factory=lambda: [0, 0])
-    hands: int = 0
-
-    def add_hand(self, scores: list[int]) -> None:
-        for player in PLAYERS:
-            self.totals[player] += scores[player]
-        self.hands += 1
-
-    @property
-    def single_hand(self) -> bool:
-        return self.target <= 0
-
-    @property
-    def over(self) -> bool:
-        if self.single_hand:
-            return self.hands >= 1
-        if max(self.totals) < self.target:
-            return False
-        return self.totals[HUMAN] != self.totals[AI]
-
-    def leader(self) -> int | None:
-        if self.totals[HUMAN] == self.totals[AI]:
-            return None
-        return HUMAN if self.totals[HUMAN] > self.totals[AI] else AI
-
-    def winner(self) -> int | None:
-        return self.leader() if self.over else None
-
-    def to_go(self, player: int) -> int:
-        """Points still needed, which is what a player is really playing for."""
-        if self.single_hand:
-            return 0
-        return max(0, self.target - self.totals[player])
 
 
 def is_wild(card: Card) -> bool:
@@ -380,6 +338,7 @@ class Game:
     melds: list[list[Meld]] = field(default_factory=list)
     pots: list[list[Card]] = field(default_factory=list)
     pot_taken: list[bool] = field(default_factory=list)
+    pot_played: list[bool] = field(default_factory=list)
     stock: list[Card] = field(default_factory=list)
     discards: list[Card] = field(default_factory=list)
     turn: int = HUMAN
@@ -399,6 +358,7 @@ class Game:
         self.pots = [rest[:POT_SIZE], rest[POT_SIZE:2 * POT_SIZE]]
         self.stock = rest[2 * POT_SIZE:]
         self.pot_taken = [False, False]
+        self.pot_played = [False, False]
         self.melds = [[], []]
         self.discards = []
         # What each player has thrown away and taken back is public: it is
@@ -548,6 +508,10 @@ class Game:
         down is a legal way to run out, and the pot then comes into the same
         turn, which is how the rules read.
         """
+        if self.pot_taken[player]:
+            # Only reached once a card has been played, so a pot already in
+            # hand is a pot in use — it did not sit there untouched.
+            self.pot_played[player] = True
         if self.hands[player]:
             return
         if not self.pot_taken[player]:
@@ -592,10 +556,20 @@ class Game:
     # --- scoring ----------------------------------------------------------
 
     def score(self, player: int) -> int:
+        """Melds up, cards left in hand down, plus the pot and closing bonuses.
+
+        A pot that arrived too late to play costs the flat penalty rather than
+        the eleven cards it brought: those cards were never a hand the player
+        had a turn to do anything with. The charge is the same hundred either
+        way, so on a cheap pot it is the harsher of the two.
+        """
         total = sum(meld.points() for meld in self.melds[player])
-        total -= sum(CARD_POINTS[card.rank] for card in self.hands[player])
-        if not self.pot_taken[player]:
-            total += POT_NOT_TAKEN
+        if self.pot_taken[player] and not self.pot_played[player]:
+            total += POT_PENALTY
+        else:
+            total -= sum(CARD_POINTS[card.rank] for card in self.hands[player])
+            if not self.pot_taken[player]:
+                total += POT_PENALTY
         if self.closed_by == player:
             total += CLOSING_BONUS
         return total

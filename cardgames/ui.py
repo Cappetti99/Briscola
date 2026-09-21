@@ -54,9 +54,13 @@ ACCENT_TEXT = "#1b2b16"
 
 # The games on offer, in menu order.
 BRISCOLA, BURRACO = "briscola", "burraco"
-GAMES = (BRISCOLA, BURRACO)
-GAME_LABELS = {BRISCOLA: "Briscola", BURRACO: "Burraco"}
+SCOPA, TRESSETTE = "scopa", "tressette"
+GAMES = (BRISCOLA, BURRACO, SCOPA, TRESSETTE)
+GAME_LABELS = {BRISCOLA: "Briscola", BURRACO: "Burraco", SCOPA: "Scopa",
+               TRESSETTE: "Tressette"}
 GAME_BLURBS = {
     BRISCOLA: "Trick taking with 40 cards. Short, sharp, first to 61.",
     BURRACO: "Melds, wild cards and the pot. Longer, and more to think about.",
+    SCOPA: "Match cards off the table. Quick, and all about what you leave.",
+    TRESSETTE: "No trumps, and you must follow suit. Ten cards, and counting.",
 }

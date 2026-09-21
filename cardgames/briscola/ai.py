@@ -30,7 +30,7 @@ WORLDS_EARLY = 100
 WORLDS_LATE = 200
 LATE_STOCK = 8
 
-# The search runs in the interface thread, so it is capped by wall clock as
+# The UI runs expert search on a worker copy. Cap search by wall clock as
 # well: whichever limit comes first. A few worlds are always played, so a
 # slow machine still gets a sensible move instead of a random one.
 TIME_BUDGET = 0.12

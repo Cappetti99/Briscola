@@ -1,8 +1,9 @@
 # Card games
 
-Two Italian card games against the computer, in one Tkinter window: **Briscola**
-and **Burraco**. Every card is drawn by the code, so there are no image assets
-to install, and the whole window lives on a single Canvas.
+Four Italian card games against the computer, in one Tkinter window:
+**Briscola**, **Burraco**, **Scopa** and **Tressette**. Every card is drawn by
+the code, so there are no image assets to install, and each game table is drawn on a single Canvas, with a shared toolbar
+for resuming games, training and settings.
 
 ![The opening menu](docs/menu.png)
 
@@ -10,8 +11,11 @@ to install, and the whole window lives on a single Canvas.
 
 - [Install and run](#install-and-run)
 - [The menu](#the-menu)
+- [Resume, training and preferences](#resume-training-and-preferences)
 - [Briscola](#briscola)
 - [Burraco](#burraco)
+- [Scopa](#scopa)
+- [Tressette](#tressette)
 - [The cards](#the-cards)
 - [Match records](#match-records)
 - [Pacing and performance](#pacing-and-performance)
@@ -47,16 +51,50 @@ Nothing outside the standard library is required — only Python 3.10+ (for the
 The app opens on a menu. Pick the game, pick the player the results are filed
 under, pick the difficulty, and start. `Statistics` and `Rules` are reachable
 from here too, and the `menu` link at the top of the side panel brings you back
-during a game — an abandoned game is not recorded.
+during a game. Unfinished games are saved for resumption, and are not recorded
+as completed matches.
 
 | Action | How |
 | --- | --- |
 | Start | `Start game`, or Enter |
-| Change game | The two pills under `GAME`, or the menu |
+| Change game | The pills under `GAME`, or the menu |
 | Change difficulty | The pills under `DIFFICULTY`, or `D` |
 | Statistics | `Statistics`, or `S` |
 | Rules | `Rules`, or `R` |
 | Change player name | The `change` link in the player box |
+
+## Resume, training and preferences
+
+![Scopa training with Italian suits](docs/italian-training.png)
+
+The toolbar above the table provides **Resume game**, **Hint**, **Review** and
+**Settings**. Settings lets you select **Italiano / English**, animation speed
+(slow, normal or fast) and French or stylised Italian suits. The Italian deck
+maps diamonds to coins, hearts to cups, spades to swords and clubs to batons;
+face labels become F/C/R. This changes the artwork, not the rules or deck size.
+
+Language, speed, deck, game, difficulty, target and hand ordering are saved to
+`preferences.json` alongside the records. English and French suits remain the
+defaults for existing users.
+
+An unfinished game is saved automatically after state changes and on exit to
+`session.json` in the same directory. **Resume game** restores the player, exact
+hands, stock, scores, pot/meld state, turn and match progress for all four games.
+It also supports resuming between hands. There is one resume slot: starting a
+new game replaces it. Finishing a match clears it. The file is versioned JSON;
+invalid saves are reported and cannot execute code.
+
+**Hint** suggests a legal action and explains the heuristic. It uses the human
+player's cards and public information; it does not inspect hidden cards. A match
+in which a hint is requested becomes a training match and is excluded from the
+competitive records, including subsequent hands. A fresh match resets this flag.
+**Review** shows the last completed trick in Briscola/Tressette and recent moves
+in Scopa/Burraco. It does not undo moves or reveal hidden draws.
+
+Statistics starts filtered to the selected game. Use the game and difficulty
+selectors to narrow the results or choose **All games** for the overall record.
+Average and best points are omitted from that aggregate because the games use
+different scoring scales. Recent matches identify which game was played.
 
 ## Briscola
 
@@ -126,8 +164,9 @@ finish by discarding one card.
   out **closes** the hand — which needs a burraco, so any other move that would
   empty your hand is refused.
 - Card points: joker 30, two 20, ace 15, K/Q/J/10/9/8 10, 7 down to 3 five.
-  Melded cards count for you, cards left in hand count against you, closing is
-  worth 100, and never taking your pot costs 100.
+  Melded cards count for you, cards left in hand count against you, and closing
+  is worth 100. A pot you never took costs 100 — and so does one that came too
+  late to play, instead of the eleven cards it brought.
 
 | Action | How |
 | --- | --- |
@@ -194,6 +233,146 @@ matches 34-46, because a player who hoards material stops closing. Briscola's
 expert works by searching sampled worlds, and that does not carry over —
 Burraco has far more moves per turn and far longer hands.
 
+## Scopa
+
+![The Scopa table](docs/scopa.png)
+
+The same forty cards as Briscola. Four go face up on the table and each player
+gets three; three more come out when both hands are empty, until the deck is
+spent. Full rules: [Wikipedia](https://en.wikipedia.org/wiki/Scopa).
+
+- Play a card and it **takes** the table card of the same value. Only if no
+  single card matches may it take several that **add up** to it — that
+  obligation is the whole game, and it is why leaving a seven out is safer
+  than leaving a three and a four.
+- Face cards count 8, 9 and 10. A card that takes nothing stays on the table.
+- Clearing the table is a **scopa**, worth a point — except on the very last
+  card of the hand, which clears a table nobody could have played on.
+- When the deck runs out, whoever captured last takes what is still there.
+
+Then four points are settled: most **cards**, most **coins** (diamonds stand in
+for denari, as the queen stands in for the cavallo), the **settebello** (the
+seven of coins), and the **primiera** — your best card in each suit, counting
+7=21, 6=18, A=16, 5=15, 4=14, 3=13, 2=12 and faces 10. A count that ends level
+scores for nobody. Every scopa is a point on top.
+
+| Action | How |
+| --- | --- |
+| Play a card | Click it, or press `1` / `2` / `3` |
+| Choose between takes | Click the table cards you want, then play the card |
+| Undo the picks | `Clear the picks` |
+| New match | `New game`, or `N` |
+
+Most of the time there is only one legal take and the click is all it needs.
+When there are several — two cards of the same value on the table, or more than
+one set that adds up — the window says so and waits, rather than choosing for
+you.
+
+### Difficulty
+
+| Level | How it plays |
+| --- | --- |
+| **Easy** | Takes whatever it happens to pick. |
+| **Normal** | Weighs what a take is worth against what the play leaves behind. |
+| **Expert** | Deals out the cards it cannot see and plays the hand out. |
+
+Normal prices every capture — cards, coins, the settebello, a rough primiera —
+and then subtracts what the move leaves on the table, scaled by the chance the
+other side is holding something that clears it. Expert keeps that as its
+playout policy but stops guessing: it deals the unseen cards into a couple of
+dozen plausible worlds, plays each candidate move out to the end of the hand in
+every one of them, and keeps the move with the best average score. A hand of
+Scopa is short enough to sample multiple continuations within a bounded search.
+
+Measured over the same deals played from both seats, judged on points:
+
+| Match-up | Score share of the stronger level | Hands |
+| --- | --- | --- |
+| Normal vs Easy | **69%** | 600 |
+| Expert vs Normal | **57%** | 320 |
+| Expert vs Easy | **70%** | 240 |
+
+Expert beats Normal clearly, but hardly pulls further ahead of Easy than Normal
+does: a hand is only worth four points plus the scope, so there is a ceiling on
+how much of it any opponent can take.
+
+### Matches
+
+Like Burraco, Scopa is played as a series. The menu picks the target — 11, 16
+or 21, or a single hand — and hands are dealt until someone passes it **and is
+ahead**.
+
+## Tressette
+
+![The Tressette table](docs/tressette.png)
+
+The same forty cards again, and **no trump suit at all**. Ten cards each and
+twenty face down as the stock; the highest card of the suit led takes the
+trick, the winner draws first and leads the next one. Full rules:
+[Wikipedia](https://en.wikipedia.org/wiki/Tressette).
+
+- Order inside a suit: **3 > 2 > A > K > Q > J > 7 > 6 > 5 > 4**. An ace is a
+  big card that two smaller-looking ones beat, which is most of the game.
+- **Following suit is compulsory.** Cards you may not play are drawn shaded
+  and sitting lower than the rest, so the rule shows before you click rather
+  than after.
+- Both draws are face up: with a stock this small, what the other side picked
+  up is part of what either player is entitled to count.
+
+Points are counted in **thirds**: the ace is worth three, the two, the three
+and the three faces one each, the rest nothing, and the last trick three more.
+Each side divides its own thirds by three and throws the remainder away, which
+is why a deal is worth eleven points and not eleven and two thirds.
+
+Declared from the hand as it is dealt, before a card is played: the ace, two
+and three of one suit is a **napoletana**, worth 3; three aces, twos or threes
+is worth 3, and four of them 4. A card can serve in both — three aces and a
+napoletana score six between them.
+
+| Action | How |
+| --- | --- |
+| Play a card | Click it, or press `1`–`9` and `0` for the tenth |
+| Sort your hand | `Sort by suit` or `Sort by rank` |
+| Skip a pause | Click the table, or space |
+| New match | `New game`, or `N` |
+
+Ten cards want ordering, so the hand is sorted from the deal and a card drawn
+mid-deal slots into place rather than landing on the end. `Sort by rank` means
+this game's order and not the number on the card: a hand sorted by number
+would stand the three next to the four and put the ace between the two and the
+king, which is exactly backwards.
+
+### Difficulty
+
+| Level | How it plays |
+| --- | --- |
+| **Easy** | Plays any card the rules allow. |
+| **Normal** | Knows which card commands a suit, and spends nothing it need not. |
+| **Expert** | Deals out the cards it cannot see and plays the deal out. |
+
+Normal asks two questions of every card: does anything still out there beat it
+in its own suit, and what does playing it cost. That is enough to lead a
+commanding card, duck a trick worth nothing, and take one worth thirds with the
+cheapest card that does it. Expert keeps that as its playout policy and stops
+guessing at the rest: it deals the unseen cards into twenty worlds, plays each
+candidate card to the end of the deal in every one, and keeps the best average.
+The search runs asynchronously; see the timing sample below.
+
+Measured over the same deals played from both seats and both leads, judged on
+thirds:
+
+| Match-up | Share of the thirds | Deals |
+| --- | --- | --- |
+| Normal vs Easy | **66%** | 400 |
+| Expert vs Normal | **64%** | 120 |
+| Expert vs Easy | **67%** | 100 |
+
+### Matches
+
+A deal is worth eleven points, so a match is played to 21 or 31 — or a single
+deal, if you would rather. As in the other two, the target has to be passed
+**and** the lead held: arriving level plays another deal.
+
 ## The cards
 
 ![All 40 Briscola cards](docs/deck.png)
@@ -224,7 +403,7 @@ default), for either game. Records are written to **two files**, side by side:
   you play, so the history stays readable without the app:
 
 ```
-# Briscola match log
+# Card games match log
 # date time        player           game      result   you -  ai   settings
 2026-08-18 15:02  lorenzo          briscola  WIN        73 - 47    difficulty=normal opened=you
 2026-08-18 15:19  lorenzo          burraco   LOSS      585 - 835   difficulty=normal opened=computer
@@ -242,7 +421,7 @@ An interrupted game is never recorded — only a finished one is.
 Briscola pauses twice per trick — before the computer plays, and again on the
 finished trick so you can see what it won — because otherwise cards appear and
 vanish faster than you can read them. **Clicking the table or pressing space
-carries on immediately**: 550 ms and 1000 ms if you let them run, nothing if you
+carries on immediately**: at normal speed, 550 ms and 1000 ms if you let them run, nothing if you
 don't. During your own turn a click on a card only ever plays that card.
 
 Which card a click or the hover lift refers to is worked out from the pointer
@@ -253,17 +432,27 @@ it out from under a pointer resting near its bottom edge, Tk sent `<Leave>`,
 the card dropped back under the pointer, `<Enter>` fired, and the two chased
 each other at full CPU while real clicks were never processed.
 
-Measured on an Apple M2, per decision:
+Expert search timing, measured over ten seeded initial positions on the
+development machine (September 2026):
 
-| Level | Mean | Worst |
+| Level | Mean | Maximum in sample |
 | --- | --- | --- |
-| Easy, Normal | under 1 ms | under 1 ms |
-| Expert | ~103 ms | ~134 ms |
+| Briscola Expert | 124 ms | 125 ms |
+| Scopa Expert | 278 ms | 387 ms |
+| Tressette Expert | 609 ms | 658 ms |
 
-The Expert search runs in the interface thread, so it is capped by a wall-clock
-budget (`ai.TIME_BUDGET`, 120 ms) as well as by a number of sampled worlds,
-whichever ends first. On a slower machine it samples fewer worlds instead of
-freezing for longer.
+Expert decisions now run on a **worker thread with a copy of the game state**.
+The Tk thread polls for the result and applies it only if the same game is still
+active. Returning to the menu, starting a new game or closing the window invalidates
+pending results. Workers never call Tk or mutate the live game.
+
+Search budgets remain 120 ms for Briscola and 900 ms for Scopa/Tressette, checked
+between batches of sampled worlds. They are soft limits, not strict maximum
+latencies; all three searches use a monotonic clock. Easy and Normal keep their
+existing synchronous path.
+
+For a repeatable timing sample, run `python tools/benchmark_ai.py --samples 10`.
+These are search times, not UI stalls or guarantees for every game position.
 
 Idle — on the menu or waiting for your card — the process measures **0.2% CPU
 and about 78 MB resident**. If the interface ever misbehaves, run it with
@@ -278,15 +467,26 @@ rather than swallowed.
 | `main.py` | Entry point |
 | `cardgames/cards.py` | Cards and decks, shared: real ranks 1–13, jokers |
 | `cardgames/cardart.py` | Card drawing on a Canvas |
-| `cardgames/records.py` | Per-player records: json store and text log |
-| `cardgames/ui.py` | Palette and window geometry |
-| `cardgames/briscola/` | `engine.py` rules, `ai.py` opponent, `layout.py` geometry, `gui.py` window |
+| `cardgames/records.py` | Per-player records with game/difficulty filters |
+| `cardgames/statistics.py` | Statistics rendering |
+| `cardgames/session.py` | Validated, versioned JSON game snapshots |
+| `cardgames/preferences.py` | Persistent language, speed, deck and game settings |
+| `cardgames/i18n.py` | Italian text, rules and presentation translation |
+| `cardgames/training.py` | Explainable hints using player-visible information |
+| `cardgames/ui.py` | Palette, window geometry, and the list of games |
+| `cardgames/match.py` | The running score of a series of hands, shared |
+| `cardgames/app.py` | Shared application window and game flow |
+| `cardgames/features.py` | Resume, settings, training and asynchronous AI coordination |
+| `cardgames/briscola/` | Rules, AI, layout and `view.py`; `gui.py` retains import compatibility |
 | `cardgames/burraco/` | `engine.py` rules, `ai.py` opponent, `layout.py` geometry, `view.py` table |
+| `cardgames/scopa/` | `engine.py` rules, `ai.py` opponent, `layout.py` geometry, `view.py` table |
+| `cardgames/tressette/` | `engine.py` rules, `ai.py` opponent, `layout.py` geometry, `view.py` table |
+| `cardgames/catalog.py` | Shared game metadata: rules, levels, targets and controls |
 | `tools/screenshots.py` | Regenerates the images in `docs/` |
 | `tests/` | See below |
 
-Neither game's rules import Tkinter, so they can be tested and reused without
-an interface. The geometry is separate again: `layout.py` is plain arithmetic,
+No game's rules import Tkinter, so they can be tested and reused without an
+interface. The geometry is separate again: `layout.py` is plain arithmetic,
 which is why most of what used to need a window does not any more.
 
 ## Tests
@@ -299,15 +499,20 @@ conda run -n briscola python tests/test_burraco.py
 
 | File | Tests | Time | Covers |
 | --- | --- | --- | --- |
-| `test_layout.py` | 21 | 0.08 s | Table geometry, with no window at all |
+| `test_features.py` | 8 | < 1 s | Save round trips, corrupted saves, preferences, filtered stats and fair hints |
+| `test_features_gui.py` | 11 | a few seconds | Resume, training, settings, filters and worker cancellation |
+| `test_catalog.py` | 3 | < 0.1 s | Shared metadata for all games and menu configuration |
+| `test_layout.py` | 40 | 0.05 s | Table geometry for all four games, with no window at all |
 | `test_records.py` | 7 | 0.05 s | The json store and the text log |
-| `test_burraco.py` | 56 | 2.5 s | Burraco rules, melds, wild cards, scoring, the opponent |
-| `test_engine.py` | 8 | 12 s | Briscola rules and the relative strength of the levels |
-| `test_gui.py` | 22 | 18 s | The window: event routing, turns, records |
+| `test_burraco.py` | 70 | 4 s | Burraco rules, melds, wild cards, scoring, the opponent |
+| `test_scopa.py` | 59 | 11 s | Scopa rules, taking, the scope, the four points, the opponent |
+| `test_tressette.py` | 32 | 7 s | Tressette order, the suit obligation, thirds, declarations |
+| `test_engine.py` | 8 | 18 s | Briscola rules and the relative strength of the levels |
+| `test_gui.py` | 53 | 28 s | The window: event routing, turns, records |
 
-`test_gui.py` drives the interface with real Tk mouse events, including a whole
-Burraco hand played only by clicking real controls. Its windows are parked off
-screen so they neither steal focus nor catch a stray click.
+`test_gui.py` drives the interface with real Tk mouse events, including whole
+hands of Burraco, Scopa and Tressette played only by clicking real controls. Its windows
+are parked off screen so they neither steal focus nor catch a stray click.
 
 Each file runs as many tests as it defines — worth checking, since appending a
 test below the `if __name__ == "__main__"` block that runs them means it never
@@ -335,6 +540,11 @@ flaky on macOS.
 ## Ideas for later
 
 - Burraco for four players in two pairs, which is how it is usually played.
+- Scopa for four, and Scopone, which is the same game with the whole deck dealt.
+- Scopa's optional points: the napola, and the re bello.
+- Tressette for four in two pairs, where the signals between partners are the
+  whole game; and declaring a combination drawn from the stock, rather than
+  only from the hand as it is dealt.
 - A cap on how far a long row of melds may spread down the table.
 - Best-of-three Briscola with a running aggregate score.
 - A leaderboard across players in the statistics window.

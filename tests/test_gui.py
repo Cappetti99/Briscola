@@ -52,6 +52,13 @@ def app_with_records(difficulty=ai.NORMAL, start=True, scale=1.0):
         app.difficulty = difficulty
         if start:
             app.start_game()
+        # Tk drops the first synthetic pointer event at a window it has only
+        # just mapped. Spend one here rather than losing whichever event a
+        # test sends first: that is what made the Burraco hover test fail
+        # about once in a hundred runs, never reproducibly.
+        app.update()
+        app.canvas.event_generate("<Motion>", x=1, y=1)
+        app.update()
         try:
             yield app, store, tmp
         finally:
@@ -609,13 +616,13 @@ def test_moving_the_pointer_lifts_a_burraco_card():
 
         app.canvas.event_generate("<Motion>", x=x, y=y)
         app.update()
-        assert app.hovered == 2, f"hovered {app.hovered} instead of 2"
+        assert wait_for(app, lambda: app.hovered == 2), \
+            f"hovered {app.hovered} instead of 2"
 
         # And the card actually moves up on the canvas.
         lifted = app.canvas.bbox("hand2")
         app.canvas.event_generate("<Motion>", x=10, y=10)
-        app.update()
-        assert app.hovered is None
+        assert wait_for(app, lambda: app.hovered is None)
         resting = app.canvas.bbox("hand2")
         assert lifted[1] < resting[1], "the lifted card sits higher"
 
@@ -857,6 +864,474 @@ def test_no_two_menu_controls_overlap():
                     apart = (a[2] <= b[0] or b[2] <= a[0]
                              or a[3] <= b[1] or b[3] <= a[1])
                     assert apart, f"{game}: {first} overlaps {second}"
+
+
+# --- Scopa ----------------------------------------------------------------
+
+def scopa_app(app):
+    """Start a hand of Scopa and wait until it is the player's move."""
+    from cardgames import ui
+
+    app.set_game(ui.SCOPA)
+    app.start_game()
+    for _ in range(400):
+        if app.state == gui.S_HUMAN:
+            # Tk drops the first synthetic pointer event at a window it has
+            # only just mapped, so wake the canvas up here rather than losing
+            # whichever click a test sends first.
+            app.canvas.event_generate("<Motion>", x=1, y=1)
+            app.update()
+            return
+        app.update()
+        time.sleep(0.005)
+    raise AssertionError("the hand never came round to the player")
+
+
+def test_starting_scopa_deals_a_table_and_a_hand():
+    from cardgames.scopa.engine import HUMAN as S_HUMAN, AI as S_AI
+
+    with app_with_records(start=False) as (app, _store, _tmp):
+        scopa_app(app)
+        assert len(app.game.table) >= 4 - 1, "four cards, less anything taken"
+        assert len(app.game.hands[S_HUMAN]) == 3
+        assert len(app.game.hands[S_AI]) <= 3
+        assert app.game.turn == S_HUMAN
+
+
+def test_clicking_a_scopa_card_plays_it():
+    from cardgames.scopa import view
+    from cardgames.scopa.engine import HUMAN as S_HUMAN
+
+    with app_with_records(start=False) as (app, _store, _tmp):
+        scopa_app(app)
+        card = app.game.hands[S_HUMAN][0]
+        if len(app.game.capture_options(card)) > 1:
+            app.table_pick = {app.game.table.index(one)
+                              for one in app.game.capture_options(card)[0]}
+        view.click_card(app, 0)
+        assert card not in app.game.hands[S_HUMAN]
+        assert app.table_pick == set(), "the picks are cleared after the move"
+        assert app.log_lines, "and the move is logged"
+
+
+def test_a_choice_of_takes_waits_for_the_player():
+    """Two cards of the same value: the window must not pick one for you."""
+    from cardgames.scopa import view
+    from cardgames.scopa.engine import HUMAN as S_HUMAN
+    from cardgames.cards import Card
+
+    with app_with_records(start=False) as (app, _store, _tmp):
+        scopa_app(app)
+        app.game.table = [Card(5, "Spades"), Card(5, "Hearts")]
+        app.game.hands[S_HUMAN] = [Card(5, "Clubs")]
+        view.click_card(app, 0)
+        assert app.game.hands[S_HUMAN] == [Card(5, "Clubs")], "nothing played"
+        assert "ways" in app.status_text
+
+        view.click_table(app, 1)
+        assert app.table_pick == {1}
+        view.click_card(app, 0)
+        assert app.game.table == [Card(5, "Spades")], "it took the one picked"
+
+
+def test_scopa_refuses_a_take_the_rules_do_not_allow():
+    from cardgames.scopa import view
+    from cardgames.scopa.engine import HUMAN as S_HUMAN
+    from cardgames.cards import Card
+
+    with app_with_records(start=False) as (app, _store, _tmp):
+        scopa_app(app)
+        app.game.table = [Card(4, "Spades"), Card(3, "Hearts")]
+        app.game.hands[S_HUMAN] = [Card(4, "Clubs")]
+        view.click_table(app, 1)                  # the three, which it cannot take
+        view.click_card(app, 0)
+        assert app.game.hands[S_HUMAN] == [Card(4, "Clubs")], "nothing played"
+        assert "cannot take" in app.status_text
+
+
+def test_a_scopa_match_records_one_row_when_it_is_won():
+    from cardgames import ui
+
+    with app_with_records(start=False) as (app, store, _tmp):
+        app.set_game(ui.SCOPA)
+        app.target = 0                     # a single hand is a match of one
+        app.start_game()
+        for _ in range(4000):
+            if app.game.game_over:
+                break
+            app.update()
+            if app.state == gui.S_HUMAN:
+                _play_any_scopa_card(app)
+        assert app.game.game_over, "the hand never finished"
+        app.update()
+        rows = store.matches("tester")
+        assert len(rows) == 1, f"{len(rows)} rows written"
+        assert rows[0].game == ui.SCOPA
+
+
+def _play_any_scopa_card(app):
+    from cardgames.scopa import view
+    from cardgames.scopa.engine import HUMAN as S_HUMAN
+
+    hand = app.game.hands[S_HUMAN]
+    if not hand:
+        return
+    options = app.game.capture_options(hand[0])
+    if len(options) > 1:
+        app.table_pick = {app.game.table.index(one) for one in options[0]}
+    view.click_card(app, 0)
+
+
+def test_a_real_click_reaches_the_scopa_table():
+    """Regression: the picked card is drawn lifted, so the hit test must not
+    ask what item is under the pointer. Asking left a dead strip along the
+    bottom edge of every picked card - the fault that once made the Briscola
+    hand unclickable."""
+    from cardgames.scopa import layout
+
+    with app_with_records(start=False) as (app, _store, _tmp):
+        scopa_app(app)
+        box = layout.table_boxes(len(app.game.table))[0]
+        middle_x = int(box[0] + box[2] / 2)
+        app.canvas.event_generate("<Button-1>", x=middle_x,
+                                  y=int(box[1] + box[3] / 2))
+        app.update()
+        assert app.table_pick == {0}, "a real click picks a table card"
+
+        # Now it is drawn eight pixels higher. Its foot must still answer.
+        app.canvas.event_generate("<Button-1>", x=middle_x,
+                                  y=int(box[1] + box[3] - 3))
+        app.update()
+        assert app.table_pick == set(), "and unpicks at the foot of the lift"
+
+
+def test_a_real_click_plays_a_scopa_card_at_the_foot_of_the_lift():
+    from cardgames.scopa import layout
+    from cardgames.scopa.engine import HUMAN as S_HUMAN
+
+    with app_with_records(start=False) as (app, _store, _tmp):
+        scopa_app(app)
+        hand = app.game.hands[S_HUMAN]
+        card = hand[0]
+        if len(app.game.capture_options(card)) > 1:
+            return                      # a choice: that path has its own test
+        x = int(layout.hand_x(len(hand), 0) + layout.CARD_W / 2)
+        app.canvas.event_generate("<Motion>", x=x,
+                                  y=int(layout.HAND_Y + layout.CARD_H / 2))
+        app.update()
+        assert wait_for(app, lambda: app.hovered == 0), \
+            "the card is lifted by the hover"
+        app.canvas.event_generate("<Button-1>", x=x,
+                                  y=int(layout.HAND_Y + layout.CARD_H - 4))
+        app.update()
+        assert card not in app.game.hands[S_HUMAN], \
+            "a click at the foot of a lifted card still plays it"
+
+
+def test_scopa_ignores_a_click_that_is_not_your_turn():
+    from cardgames.scopa import view
+    from cardgames.scopa.engine import AI as S_AI, HUMAN as S_HUMAN
+
+    with app_with_records(start=False) as (app, _store, _tmp):
+        scopa_app(app)
+        app.game.turn = S_AI
+        before = list(app.game.hands[S_HUMAN])
+        view.click_card(app, 0)
+        view.click_table(app, 0)
+        assert app.game.hands[S_HUMAN] == before, "nothing was played"
+        assert app.table_pick == set(), "and nothing was picked"
+
+
+def test_the_next_hand_of_a_scopa_match_keeps_the_running_score():
+    from cardgames import ui
+
+    with app_with_records(start=False) as (app, _store, _tmp):
+        app.set_game(ui.SCOPA)
+        app.target = 21                    # far enough off to need more hands
+        app.start_game()
+        for _ in range(4000):
+            if app.game.game_over:
+                break
+            app.update()
+            if app.state == gui.S_HUMAN:
+                _play_any_scopa_card(app)
+        assert app.game.game_over
+        app.update()
+        totals = list(app.match.totals)
+        assert app.match.hands == 1 and sum(totals) > 0
+
+        app.table_pick = {0}
+        app._overlay_next_hand()
+        app.update()
+        assert app.match.totals == totals, "the match score carries over"
+        assert app.table_pick == set(), "and the new hand starts clean"
+        # Not the size of the table: the computer may already have taken from
+        # it by the time the window comes back round to the player.
+        assert app.game.cards_left == 30, "a fresh deck was dealt"
+
+
+# --- Tressette ------------------------------------------------------------
+
+def tressette_app(app):
+    """Start a deal of Tressette and wait until it is the player's move."""
+    from cardgames import ui
+
+    app.set_game(ui.TRESSETTE)
+    app.start_game()
+    for _ in range(600):
+        if app.state == gui.S_HUMAN:
+            app.canvas.event_generate("<Motion>", x=1, y=1)
+            app.update()
+            return
+        app.update()
+        time.sleep(0.005)
+    raise AssertionError("the deal never came round to the player")
+
+
+def test_starting_tressette_deals_ten_cards_each():
+    from cardgames.tressette.engine import AI as T_AI, HUMAN as T_HUMAN
+
+    with app_with_records(start=False) as (app, _store, _tmp):
+        tressette_app(app)
+        assert len(app.game.hands[T_HUMAN]) == 10
+        assert len(app.game.hands[T_AI]) in (9, 10)
+        assert app.game.cards_left == 20
+
+
+def test_a_real_click_plays_a_tressette_card():
+    from cardgames.tressette import layout
+    from cardgames.tressette.engine import HUMAN as T_HUMAN
+
+    with app_with_records(start=False) as (app, _store, _tmp):
+        tressette_app(app)
+        legal = app.game.legal_cards(T_HUMAN)
+        index = legal[0]
+        card = app.game.hands[T_HUMAN][index]
+        count = len(app.game.hands[T_HUMAN])
+        x = int(layout.hand_x(count, index) + layout.HAND_W / 2)
+        app.canvas.event_generate("<Motion>", x=x,
+                                  y=int(layout.HAND_Y + layout.HAND_H / 2))
+        app.update()
+        assert wait_for(app, lambda: app.hovered == index), \
+            "the card lifts under the pointer"
+        app.canvas.event_generate("<Button-1>", x=x,
+                                  y=int(layout.HAND_Y + layout.HAND_H - 4))
+        app.update()
+        assert card not in app.game.hands[T_HUMAN], \
+            "a click at the foot of a lifted card still plays it"
+
+
+def test_the_window_refuses_a_card_that_breaks_the_suit():
+    from cardgames.tressette import view
+    from cardgames.tressette.engine import AI as T_AI, HUMAN as T_HUMAN
+    from cardgames.cards import ACE, Card
+
+    with app_with_records(start=False) as (app, _store, _tmp):
+        tressette_app(app)
+        app.game.hands[T_HUMAN] = [Card(4, "Hearts"), Card(ACE, "Spades")]
+        app.game.hands[T_AI] = [Card(5, "Spades")]
+        app.game.table = [(T_AI, Card(2, "Spades"))]
+        app.game.turn = T_HUMAN
+        view.play(app, 0)                       # the heart, which is refused
+        assert app.game.hands[T_HUMAN][0] == Card(4, "Hearts")
+        assert "follow suit" in app.status_text
+        view.play(app, 1)
+        assert Card(ACE, "Spades") not in app.game.hands[T_HUMAN]
+
+
+def test_a_whole_tressette_deal_played_by_clicking():
+    from cardgames.tressette import layout
+    from cardgames.tressette.engine import HUMAN as T_HUMAN
+
+    with app_with_records(start=False) as (app, _store, _tmp):
+        app.target = 0                      # one deal is a match of one
+        tressette_app(app)
+        for _ in range(6000):
+            if app.game.game_over:
+                break
+            app.update()
+            if app.state != gui.S_HUMAN:
+                continue
+            index = app.game.legal_cards(T_HUMAN)[0]
+            count = len(app.game.hands[T_HUMAN])
+            x = int(layout.hand_x(count, index) + layout.HAND_W / 2)
+            y = int(layout.HAND_Y + layout.HAND_H / 2)
+            app.canvas.event_generate("<Button-1>", x=x, y=y)
+            app.update()
+        assert app.game.game_over, "the deal never finished"
+        assert app.game.tricks_played == 20
+        assert sum(app.game.thirds) == 35, "every third is accounted for"
+        app.update()
+        rows = app.records.matches("tester")
+        assert len(rows) == 1 and rows[0].game == "tressette"
+
+
+def test_the_tressette_hand_can_be_put_in_order():
+    from cardgames.tressette.engine import HUMAN as T_HUMAN, STRENGTH
+    from cardgames.cards import SUITS
+
+    with app_with_records(start=False) as (app, _store, _tmp):
+        tressette_app(app)
+        rect, sort_by_rank = app._buttons["tressette_sort_rank"]
+        sort_by_rank()
+        app.update()
+        assert app.sort_mode == "rank"
+        ranks = [STRENGTH[card.rank] for card in app.game.hands[T_HUMAN]]
+        assert ranks == sorted(ranks, reverse=True), "strongest first"
+
+        _rect, sort_by_suit = app._buttons["tressette_sort_suit"]
+        sort_by_suit()
+        app.update()
+        assert app.sort_mode == "suit"
+        suits = [SUITS.index(card.suit) for card in app.game.hands[T_HUMAN]]
+        assert suits == sorted(suits), "the suits are grouped"
+
+
+def test_a_drawn_tressette_card_lands_in_its_place():
+    """Otherwise the order the player asked for breaks on the first draw."""
+    from cardgames.tressette import layout
+    from cardgames.tressette.engine import HUMAN as T_HUMAN, STRENGTH
+
+    with app_with_records(start=False) as (app, _store, _tmp):
+        tressette_app(app)
+        _rect, sort_by_rank = app._buttons["tressette_sort_rank"]
+        sort_by_rank()
+        app.update()
+        tricks = app.game.tricks_played
+        for _ in range(3000):
+            if app.game.tricks_played > tricks or app.game.game_over:
+                break
+            app.update()
+            if app.state == gui.S_HUMAN:
+                index = app.game.legal_cards(T_HUMAN)[0]
+                count = len(app.game.hands[T_HUMAN])
+                x = int(layout.hand_x(count, index) + layout.HAND_W / 2)
+                y = int(layout.HAND_Y + layout.HAND_H / 2)
+                app.canvas.event_generate("<Button-1>", x=x, y=y)
+                app.update()
+        assert app.game.tricks_played > tricks, "no trick was resolved"
+        assert len(app.game.hands[T_HUMAN]) == 10, "and a card was drawn"
+        ranks = [STRENGTH[card.rank] for card in app.game.hands[T_HUMAN]]
+        assert ranks == sorted(ranks, reverse=True), \
+            "the drawn card went to the end instead of into place"
+
+
+def test_no_two_controls_overlap_on_any_table():
+    """The menu has this check; the panels of the four tables need it too."""
+    from cardgames import ui
+
+    with app_with_records(start=False) as (app, _store, _tmp):
+        for kind in ui.GAMES:
+            app.show_menu()
+            app.set_game(kind)
+            app.start_game()
+            for _ in range(600):
+                app.update()
+                if app.state == gui.S_HUMAN:
+                    break
+            boxes = {key: app.canvas.bbox(rect)
+                     for key, (rect, _cmd) in app._buttons.items()}
+            assert boxes, f"{kind}: the table drew no controls at all"
+            for first in boxes:
+                for second in boxes:
+                    if first >= second:
+                        continue
+                    a, b = boxes[first], boxes[second]
+                    apart = (a[2] <= b[0] or b[2] <= a[0]
+                             or a[3] <= b[1] or b[3] <= a[1])
+                    assert apart, f"{kind}: {first} overlaps {second}"
+            for key, box in boxes.items():
+                assert box[3] <= ui.WIN_H and box[2] <= ui.WIN_W, \
+                    f"{kind}: {key} runs off the window"
+
+
+def test_changing_game_mid_play_falls_back_to_the_menu():
+    from cardgames import ui
+
+    with app_with_records(start=False) as (app, _store, _tmp):
+        app.set_game(ui.BRISCOLA)
+        app.start_game()
+        app.update()
+        app.set_game(ui.BURRACO)
+        app.update()
+        assert app.state == gui.S_MENU, "the old table cannot stay on screen"
+        assert app.game_kind == ui.BURRACO
+
+
+# --- faults found by hand, and kept out --------------------------------------
+
+def test_a_key_with_no_character_does_nothing():
+    """Regression: "" is a substring of every string, so an arrow key passed
+    the `char in "123"` test and then raised on int("")."""
+    from cardgames import ui
+
+    with app_with_records(start=False) as (app, _store, _tmp):
+        for kind in ui.GAMES:
+            app.show_menu()
+            app.set_game(kind)
+            app.start_game()
+            for _ in range(600):
+                app.update()
+                if app.state == gui.S_HUMAN:
+                    break
+                time.sleep(0.004)
+            for keysym in ("Left", "Right", "Up", "Shift_L", "F5", "BackSpace"):
+                app.event_generate("<Key>", keysym=keysym)
+                app.update()
+                assert not app.status_text.startswith("Something went wrong"), \
+                    f"{kind}: {keysym} broke the window - {app.status_text}"
+
+
+def test_starting_from_the_menu_begins_a_fresh_match():
+    """Regression: a match left running was picked up by the next Start -
+    and after a change of game it was another game's match entirely."""
+    from cardgames import ui
+
+    with app_with_records(start=False) as (app, _store, _tmp):
+        app.set_game(ui.BURRACO)
+        app.target = 1000
+        app.start_game()
+        app.update()
+        app.match.add_hand([700, 120])
+        app.show_menu()
+        app.set_game(ui.SCOPA)
+        app.target = 11
+        app.start_game()
+        app.update()
+        assert app.match.totals == [0, 0], \
+            f"a Burraco match followed the player into Scopa: {app.match.totals}"
+        assert app.match.target == 11
+
+
+def test_space_during_the_computer_s_pause_belongs_to_the_right_game():
+    """Regression: every game arms its own timers, and Briscola's finisher on
+    a Burraco table raised - after cancelling the timer, which left the hand
+    with nothing to carry it on."""
+    from cardgames import ui
+
+    for kind in ui.GAMES:
+        with app_with_records(start=False) as (app, _store, _tmp):
+            gui.AI_DELAY = gui.TRICK_DELAY = 4000
+            try:
+                app.set_game(kind)
+                app.next_leader = 1              # let the computer start
+                app.start_game()
+                waiting = False
+                for _ in range(500):
+                    app.update()
+                    if app.state == gui.S_AI and app._pending is not None:
+                        waiting = True
+                        break
+                    time.sleep(0.004)
+                assert waiting, f"{kind}: never waited for the computer"
+                app.event_generate("<Key>", keysym="space")
+                app.update()
+                assert not app.status_text.startswith("Something went wrong"), \
+                    f"{kind}: {app.status_text}"
+                assert app.state == gui.S_HUMAN, \
+                    f"{kind}: the pause was skipped but the turn did not arrive"
+            finally:
+                gui.AI_DELAY = gui.TRICK_DELAY = 5
 
 
 def test_the_menu_fits_the_window():

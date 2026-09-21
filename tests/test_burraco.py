@@ -8,7 +8,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from cardgames.burraco.engine import (AI, BURRACO_CLEAN, BURRACO_DIRTY,
                                       CARD_POINTS, CLOSING_BONUS, HAND_SIZE,
-                                      HUMAN, POT_NOT_TAKEN, POT_SIZE, Game,
+                                      HUMAN, POT_PENALTY, POT_SIZE, Game,
                                       InvalidMeld, Match, Meld, RUN, SET,
                                       Stranded,
                                       build_meld,
@@ -272,7 +272,7 @@ def test_scoring_counts_melds_up_and_the_hand_down():
     game = Game(seed=5)
     game.melds[HUMAN] = [seven_run()]
     game.hands[HUMAN] = [Card(ACE, "Clubs")]
-    game.pot_taken[HUMAN] = True
+    game.pot_taken[HUMAN] = game.pot_played[HUMAN] = True
 
     expected = seven_run().points() - CARD_POINTS[ACE]
     assert game.score(HUMAN) == expected
@@ -285,7 +285,29 @@ def test_never_taking_the_pot_costs_you():
     game = Game(seed=5)
     game.hands[HUMAN] = []
     game.pot_taken[HUMAN] = False
-    assert game.score(HUMAN) == POT_NOT_TAKEN
+    assert game.score(HUMAN) == POT_PENALTY
+
+
+def test_a_pot_taken_too_late_to_play_costs_the_same_hundred():
+    """The eleven cards it brought are not charged on top of the penalty."""
+    game = Game(seed=5, first_player=HUMAN)
+    game.draw(HUMAN)
+    game.hands[HUMAN] = [Card(KING, "Clubs")]
+    game.discard(HUMAN, Card(KING, "Clubs"))     # empties the hand: pot taken
+
+    assert game.pot_taken[HUMAN] and not game.pot_played[HUMAN]
+    in_hand = sum(CARD_POINTS[card.rank] for card in game.hands[HUMAN])
+    assert in_hand > -POT_PENALTY, "seed 5 should make the point worth making"
+    assert game.score(HUMAN) == POT_PENALTY
+
+    # Once a card of it has been played, the pot is an ordinary hand again.
+    game.draw(AI)
+    game.discard(AI, game.hands[AI][0])
+    game.draw(HUMAN)
+    game.discard(HUMAN, game.hands[HUMAN][0])
+    assert game.pot_played[HUMAN]
+    assert game.score(HUMAN) == -sum(CARD_POINTS[card.rank]
+                                     for card in game.hands[HUMAN])
 
 
 def test_winner_compares_the_two_scores():

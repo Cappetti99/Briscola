@@ -4,7 +4,7 @@ import random
 from collections import Counter
 
 from ..cards import RANKS, SUITS, Card, burraco_deck
-from .engine import (AI, BURRACO_SIZE, MIN_MELD, CARD_POINTS, POT_SIZE,
+from .engine import (BURRACO_SIZE, MIN_MELD, CARD_POINTS, POT_SIZE,
                      PLAYERS, Game, InvalidMeld, Meld, Stranded, Turn,
                      build_meld, can_extend, is_wild, wild_stands_for)
 
@@ -450,6 +450,7 @@ def _clone(game: Game) -> Game:
                   for side in game.melds]
     copy.pots = [list(game.pots[0]), list(game.pots[1])]
     copy.pot_taken = list(game.pot_taken)
+    copy.pot_played = list(game.pot_played)
     copy.stock = list(game.stock)
     copy.discards = list(game.discards)
     copy.thrown = [list(game.thrown[0]), list(game.thrown[1])]

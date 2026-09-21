@@ -13,6 +13,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from cardgames.briscola import layout as briscola
 from cardgames.burraco import layout as burraco
+from cardgames.scopa import layout as scopa
+from cardgames.tressette import layout as tressette
 from cardgames.ui import TABLE_W
 
 
@@ -283,6 +285,129 @@ def test_cards_of_a_shrunken_meld_still_step_apart():
     first = burraco.card_position(boxes[0], 0, scale)
     second = burraco.card_position(boxes[0], 1, scale)
     assert second[1] - first[1] >= 8, "a shrunken run must still be readable"
+
+
+# --- Scopa ----------------------------------------------------------------
+
+def test_a_scopa_hand_is_centred():
+    for count in (1, 2, 3):
+        left = scopa.hand_x(count, 0)
+        right = scopa.hand_x(count, count - 1) + scopa.CARD_W
+        assert abs((left + right) / 2 - scopa.CENTER_X) < 0.5, count
+
+
+def test_the_pointer_finds_each_scopa_card():
+    for count in (1, 2, 3):
+        for index in range(count):
+            x = scopa.hand_x(count, index) + scopa.CARD_W / 2
+            y = scopa.HAND_Y + scopa.CARD_H / 2
+            assert scopa.hand_slot_at(x, y, count) == index
+    assert scopa.hand_slot_at(0, scopa.HAND_Y, 3) is None
+    assert scopa.hand_slot_at(scopa.CENTER_X, 0, 3) is None
+
+
+def test_the_scopa_table_stays_on_the_table():
+    """However many cards pile up, none of them leaves the felt."""
+    for count in range(1, 41):
+        boxes = scopa.table_boxes(count)
+        assert len(boxes) == count
+        for x, y, w, h in boxes:
+            assert x >= 0 and x + w <= TABLE_W, count
+            assert y >= 0 and y + h <= scopa.HAND_Y - scopa.LIFT, count
+
+
+def test_the_scopa_table_never_overlaps_itself():
+    for count in (2, 5, 9, 14, 22, 33):
+        boxes = scopa.table_boxes(count)
+        for first in range(len(boxes)):
+            for second in range(first + 1, len(boxes)):
+                a, b = boxes[first], boxes[second]
+                apart = (a[0] + a[2] <= b[0] + 0.01
+                         or b[0] + b[2] <= a[0] + 0.01
+                         or a[1] + a[3] <= b[1] + 0.01
+                         or b[1] + b[3] <= a[1] + 0.01)
+                assert apart, f"{count}: {first} overlaps {second}"
+
+
+def test_the_scopa_table_fills_rows_before_it_shrinks_cards():
+    """A smaller card is a last resort: rows come first."""
+    for count in (1, 4, 6):
+        assert scopa.table_boxes(count)[0][2] == scopa.TABLE_CARD_W, count
+        assert len({round(y) for _x, y, _w, _h in scopa.table_boxes(count)}) == 1
+    rows = len({round(y) for _x, y, _w, _h in scopa.table_boxes(30)})
+    assert rows == scopa.TABLE_ROWS
+    assert scopa.table_boxes(30)[0][2] < scopa.TABLE_CARD_W
+
+
+def test_the_pointer_finds_a_card_on_the_scopa_table():
+    for count in (1, 4, 9, 20):
+        for index, (x, y, w, h) in enumerate(scopa.table_boxes(count)):
+            assert scopa.table_slot_at(x + w / 2, y + h / 2, count) == index
+    assert scopa.table_slot_at(2, 2, 6) is None
+
+
+# --- Tressette ------------------------------------------------------------
+
+def test_a_tressette_hand_is_centred_at_every_size():
+    for count in (1, 4, 7, 10):
+        left = tressette.hand_x(count, 0)
+        right = tressette.hand_x(count, count - 1) + tressette.HAND_W
+        assert abs((left + right) / 2 - tressette.CENTER_X) < 0.5, count
+
+
+def test_ten_cards_still_fit_the_table():
+    for count in (1, 5, 10):
+        left = tressette.hand_x(count, 0)
+        right = tressette.hand_x(count, count - 1) + tressette.HAND_W
+        assert left >= 0 and right <= TABLE_W, count
+
+
+def test_the_tressette_fan_only_tightens_when_it_has_to():
+    assert tressette.hand_step(3) == tressette.HAND_STEP_MAX
+    assert tressette.hand_step(10) < tressette.HAND_STEP_MAX
+    assert tressette.hand_step(10) > tressette.HAND_W / 3, \
+        "a card must still show a strip wide enough to read and to click"
+
+
+def test_the_pointer_finds_each_tressette_card():
+    for count in (1, 6, 10):
+        for index in range(count):
+            x = tressette.hand_x(count, index) + tressette.HAND_W / 2
+            y = tressette.HAND_Y + tressette.HAND_H / 2
+            assert tressette.hand_slot_at(x, y, count) == index, (count, index)
+    assert tressette.hand_slot_at(0, tressette.HAND_Y, 10) is None
+    assert tressette.hand_slot_at(tressette.CENTER_X, 0, 10) is None
+
+
+def test_where_two_tressette_cards_overlap_the_top_one_wins():
+    """The cards are drawn left to right, so the right-hand one is on top."""
+    count = 10
+    left = tressette.hand_x(count, 5)
+    strip = left + 2                     # inside card 4 as well as card 5
+    assert tressette.hand_slot_at(strip, tressette.HAND_Y + 20, count) == 5
+
+
+def test_a_forbidden_tressette_card_can_still_be_clicked():
+    """It is drawn lower than the rest, and the hit test has to reach it."""
+    count = 10
+    x = tressette.hand_x(count, 0) + tressette.HAND_W / 2
+    foot = tressette.HAND_Y + tressette.HAND_H + tressette.DIM_DROP - 1
+    assert tressette.hand_slot_at(x, foot, count) == 0
+    assert tressette.hand_slot_at(
+        x, tressette.HAND_Y + tressette.HAND_H + tressette.DIM_DROP + 6,
+        count) is None
+
+
+def test_the_tressette_table_stays_clear_of_the_hand():
+    for player in (tressette.HUMAN, tressette.AI):
+        _x, y = tressette.table_slot(player)
+        assert y + tressette.TABLE_CARD_H <= tressette.HAND_Y - tressette.LIFT
+
+
+def test_the_two_tressette_table_slots_do_not_overlap():
+    (ax, ay), (bx, by) = (tressette.table_slot(tressette.AI),
+                          tressette.table_slot(tressette.HUMAN))
+    assert ax + tressette.TABLE_CARD_W <= bx or bx + tressette.TABLE_CARD_W <= ax
 
 
 if __name__ == "__main__":

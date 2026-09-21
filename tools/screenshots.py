@@ -1,7 +1,7 @@
 """Render the screenshots used by README.md.
 
-The interface is drawn entirely on a Tkinter Canvas, so the images come
-straight from the real code: each canvas is exported to PostScript and
+The game table is drawn on a Tkinter Canvas, so the images come
+straight from the real code (the native toolbar is not included): each canvas is exported to PostScript and
 converted to PNG with Ghostscript (`gs`, e.g. `brew install ghostscript`).
 
     conda run -n briscola python tools/screenshots.py
@@ -154,6 +154,74 @@ def shot_burraco(store):
     app.destroy()
 
 
+def shot_scopa(store):
+    """The Scopa table a few cards in, with a take picked out on the table."""
+    from cardgames import ui
+    from cardgames.scopa import ai as scopa_ai
+    from cardgames.scopa import view as scopa_view
+    from cardgames.scopa.engine import HUMAN as S_HUMAN
+
+    app = gui.BriscolaApp(records_store=store, scale=1.0)
+    gui.AI_DELAY = 5
+    app.set_game(ui.SCOPA)
+    app.update()
+    app.start_game()
+
+    played = 0
+    while played < 9 and not app.game.game_over:
+        settle(app, 0.05)
+        if app.state != gui.S_HUMAN:
+            continue
+        # Played through the view, so both sides show up in the move log.
+        index, taking = scopa_ai.choose_move(app.game, S_HUMAN, app.difficulty)
+        app.table_pick = {app.game.table.index(one) for one in taking}
+        scopa_view.click_card(app, index)
+        played += 1
+
+    settle(app, 0.3)
+    app.table_pick = {0} if app.game.table else set()
+    app.render()
+    settle(app, 0.2)
+    export(app.canvas, gui.WIN_W, gui.WIN_H, "scopa")
+    app.destroy()
+
+
+def shot_tressette(store):
+    """The Tressette table with the computer's lead down, so the cards the
+    obligation rules out are shown greyed."""
+    from cardgames import ui
+    from cardgames.tressette import ai as tressette_ai
+    from cardgames.tressette.engine import HUMAN as T_HUMAN
+
+    app = gui.BriscolaApp(records_store=store, scale=1.0)
+    gui.AI_DELAY = gui.TRICK_DELAY = 5
+    app.set_game(ui.TRESSETTE)
+    app.update()
+    app.start_game()
+
+    for _ in range(3000):
+        settle(app, 0.01)
+        game = app.game
+        if game.game_over:
+            break
+        if app.state != gui.S_HUMAN:
+            continue
+        legal = game.legal_cards(T_HUMAN)
+        # Stop on a position that shows the rule: a lead down, and cards in
+        # hand the player is not allowed to answer with.
+        if game.tricks_played >= 5 and len(legal) < len(game.hands[T_HUMAN]):
+            break
+        index = tressette_ai.choose_card(game, T_HUMAN, app.difficulty)
+        game.play_card(T_HUMAN, index)
+        app.tressette_advance()
+
+    app.hovered = None
+    app.render()
+    settle(app, 0.3)
+    export(app.canvas, gui.WIN_W, gui.WIN_H, "tressette")
+    app.destroy()
+
+
 def shot_statistics(store):
     root = tk.Tk()
     root.withdraw()
@@ -197,12 +265,33 @@ def shot_deck():
     root.destroy()
 
 
+
+def shot_training(store):
+    """Italian suits and an explainable Scopa hint."""
+    from cardgames.scopa.engine import Game
+    app = gui.BriscolaApp(records_store=store, scale=1.0)
+    app.language = "it"
+    app.deck_style = "italian"
+    app.set_game("scopa")
+    app.start_game()
+    app._cancel_pending()
+    app.game = Game(seed=17)
+    app.after_move()
+    app.show_hint()
+    settle(app, 0.1)
+    export(app.canvas, gui.WIN_W, gui.WIN_H, "italian-training")
+    app.destroy()
+
+
 SHOTS = {
     "menu": shot_menu,
     "table": shot_table,
     "burraco": shot_burraco,
+    "scopa": shot_scopa,
+    "tressette": shot_tressette,
     "statistics": shot_statistics,
     "deck": lambda _store: shot_deck(),
+    "italian-training": shot_training,
 }
 
 

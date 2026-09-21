@@ -7,6 +7,7 @@ from .cards import RANK_LABELS, Card
 #   "classic"  pips arranged as on a real French card, red and black
 #   "minimal"  no pips: one big rank, one pip, and a lot of white space
 STYLE = "classic"
+DECK = "french"
 
 # Two ink schemes. FOUR_COLOUR is the one in use: it keeps the traditional
 # shapes but gives every suit its own colour, so the suit reads at a glance,
@@ -88,7 +89,7 @@ def draw_card(canvas, x, y, w, h, card: Card, tags=(), highlight=False,
                x + w * 0.93, y + h * 0.95, radius * 0.6,
                fill="", outline=color, width=1, tags=tags)
 
-    label = card.label
+    label = rank_label(card)
     font_small = ("Helvetica", max(9, int(h * 0.11)), "bold")
     canvas.create_text(x + w * 0.17, y + h * 0.11, text=label, fill=color,
                        font=font_small, tags=tags)
@@ -156,7 +157,7 @@ def draw_placeholder(canvas, x, y, w, h, text="", tags=(), color="#2c7550"):
 
 def _draw_minimal(canvas, x, y, w, h, card, color, tags):
     """Rank and one pip, nothing else."""
-    canvas.create_text(x + w * 0.5, y + h * 0.44, text=card.label, fill=color,
+    canvas.create_text(x + w * 0.5, y + h * 0.44, text=rank_label(card), fill=color,
                        font=ui.font(int(h * 0.34), "bold"), tags=tags)
     emblem(canvas, card.suit, x + w * 0.5, y + h * 0.72, w * 0.26, color, tags)
 
@@ -195,7 +196,7 @@ def _draw_pips(canvas, x, y, w, h, card, color, tags):
 
 def _draw_face_card(canvas, x, y, w, h, card, color, tags):
     canvas.create_text(x + w * 0.5, y + h * 0.40,
-                       text=RANK_LABELS[card.rank], fill=color,
+                       text=rank_label(card), fill=color,
                        font=ui.font(int(h * 0.30), "bold"), tags=tags)
     emblem(canvas, card.suit, x + w * 0.5, y + h * 0.70, w * 0.22, color, tags)
     canvas.create_line(x + w * 0.22, y + h * 0.55, x + w * 0.78, y + h * 0.55,
@@ -209,6 +210,8 @@ def emblem(canvas, suit, cx, cy, size, color, tags=()):
     survive the PostScript export the screenshots go through.
     """
     r = size / 2
+    if DECK == "italian":
+        return italian_emblem(canvas, suit, cx, cy, r, color, tags)
     if suit == "Diamonds":
         canvas.create_polygon(cx, cy - r, cx + r * 0.72, cy,
                              cx, cy + r, cx - r * 0.72, cy,
@@ -254,3 +257,31 @@ def _stem(canvas, cx, cy, r, color, tags):
                          cx + r * 0.42, cy + r,
                          cx - r * 0.42, cy + r,
                          fill=color, outline=color, tags=tags)
+
+
+def italian_emblem(canvas, suit, x, y, r, color, tags=()):
+    """Stylised coins, cups, swords and batons drawn at any card scale."""
+    if suit == "Diamonds":
+        canvas.create_oval(x-r, y-r, x+r, y+r, fill="#d7a52f", outline=color, tags=tags)
+        canvas.create_oval(x-r*.6, y-r*.6, x+r*.6, y+r*.6, outline=color, tags=tags)
+        canvas.create_line(x-r*.35, y, x+r*.35, y, fill=color, tags=tags)
+        canvas.create_line(x, y-r*.35, x, y+r*.35, fill=color, tags=tags)
+    elif suit == "Hearts":
+        canvas.create_polygon(x-r, y-r*.7, x+r, y-r*.7, x+r*.55, y+r*.25,
+                              x-r*.55, y+r*.25, fill=color, tags=tags)
+        canvas.create_line(x, y+r*.2, x, y+r*.85, fill=color, width=max(1,r*.2), tags=tags)
+        canvas.create_line(x-r*.6, y+r*.9, x+r*.6, y+r*.9, fill=color, width=max(1,r*.2), tags=tags)
+    elif suit == "Spades":
+        canvas.create_polygon(x, y-r, x+r*.22, y+r*.35, x-r*.22, y+r*.35,
+                              fill=color, tags=tags)
+        canvas.create_line(x-r*.6, y+r*.4, x+r*.6, y+r*.4, fill=color, width=max(1,r*.18), tags=tags)
+        canvas.create_line(x, y+r*.4, x, y+r, fill=color, width=max(1,r*.25), tags=tags)
+    else:
+        canvas.create_polygon(x-r*.7, y-r, x-r*.1, y-r, x+r*.6, y+r,
+                              x+r*.25, y+r, fill=color, tags=tags)
+        canvas.create_line(x-r*.2, y-r*.2, x+r*.3, y-r*.55, fill=color, width=max(1,r*.18), tags=tags)
+
+
+def rank_label(card):
+    return ({11: "F", 12: "C", 13: "R"}.get(card.rank, card.label)
+            if DECK == "italian" else card.label)

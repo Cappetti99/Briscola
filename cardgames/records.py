@@ -144,7 +144,7 @@ class Records:
         new_file = not self.text_path.exists()
         with self.text_path.open("a", encoding="utf-8") as handle:
             if new_file:
-                handle.write("# Briscola match log\n")
+                handle.write("# Card games match log\n")
                 handle.write("# date time        player           game      "
                              "result   you -  ai   settings\n")
             handle.write(match.text_line(player) + "\n")
@@ -188,21 +188,28 @@ class Records:
         self.append_text(name, match)
         return match
 
-    def matches(self, name: str) -> list[Match]:
+    def matches(self, name: str, game: str | None = None,
+                difficulty: str | None = None) -> list[Match]:
         entry = self.data["players"].get(name)
         if not entry:
             return []
         out = []
         for raw in entry.get("matches", []):
             try:
-                out.append(Match(**raw))
+                match = Match(**raw)
+                if game is not None and match.game != game:
+                    continue
+                if difficulty is not None and match.difficulty != difficulty:
+                    continue
+                out.append(match)
             except TypeError:
                 continue  # rows written by another version: skip them
         return out
 
-    def stats(self, name: str) -> Stats:
+    def stats(self, name: str, game: str | None = None,
+              difficulty: str | None = None) -> Stats:
         stats = Stats()
-        matches = self.matches(name)
+        matches = self.matches(name, game, difficulty)
         for match in matches:
             stats.played += 1
             stats.points_for += match.you

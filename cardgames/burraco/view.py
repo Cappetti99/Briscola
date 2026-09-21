@@ -9,11 +9,10 @@ from ..cards import Card
 from ..ui import (ACCENT, CONTENT_W, CONTENT_X, FELT, FELT_EDGE, PANEL_BG,
                   PANEL_CARD, TABLE_H, TABLE_W, TEXT, TEXT_DIM)
 from . import ai as burraco_ai
-from .engine import (AI, HUMAN, InvalidMeld, Stranded, is_wild,
-                     wild_stands_for)
+from .engine import (AI, HUMAN, InvalidMeld, Stranded, wild_stands_for)
 
 from .layout import (BACK_H, BACK_STEP, BACK_W, CENTER_X, HAND_H, HAND_W,
-                     HAND_Y, HOVER_LIFT, LIFT, MELD_H, MELD_W, MELD_X0,
+                     HAND_Y, HOVER_LIFT, LIFT, MELD_H, MELD_W,
                      OPP_HAND_Y, OPP_MELD_Y, PILE_X, STOCK_X, STOCK_Y,
                      OPP_MELD_ROOM, YOUR_MELD_Y, your_meld_room,
                      card_position, clamp_scroll, hand_slot_at, hand_x,
@@ -418,4 +417,6 @@ def computer_turn(app):
     """Let the opponent play its whole turn, and report it."""
     moves = burraco_ai.take_turn(app.game, AI, app.difficulty)
     for move in moves:
+        if move.startswith("draws "):
+            move = "draws a card"
         app.note(f"Computer {move}")

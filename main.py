@@ -1,6 +1,6 @@
-"""Entry point: opens the menu, from which either game is dealt."""
+"""Entry point: opens the menu, from which any of the four games is dealt."""
 
-from cardgames.briscola.gui import main
+from cardgames.app import main
 
 if __name__ == "__main__":
     main()
