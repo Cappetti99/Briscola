@@ -112,6 +112,11 @@ in Scopa/Burraco. It does not undo moves or reveal hidden draws.
 **Tutorial** opens a short three-step lesson for the selected game. It can be
 opened from the menu or the table and never modifies a match or its records.
 
+The shared multiplayer model now validates two-player tables and four-player
+tables arranged as two pairs, including clockwise turns, partners and team
+scores. The existing engines still use their two-player rules; adapting Burraco
+and Tressette to pairs is the next implementation step on top of this model.
+
 Statistics starts filtered to the selected game. Use the game and difficulty
 selectors to narrow the results or choose **All games** for the overall record.
 Average and best points are omitted from that aggregate because the games use

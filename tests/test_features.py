@@ -14,6 +14,7 @@ from cardgames.scopa import ai as scopa_ai
 from cardgames.tressette import engine as tressette
 from cardgames.match import Match
 from cardgames.replay import Replay
+from cardgames.multiplayer import Participant, Table, Team
 
 
 def snapshot(kind, game):
@@ -191,6 +192,22 @@ def test_replay_roundtrip_preserves_only_recorded_public_events():
         path.write_text(json.dumps(raw))
         loaded = Replay.load(path)
         assert 'hidden-card' in loaded.events[0].cards
+
+
+def test_multiplayer_table_validates_pairs_and_turn_order():
+    players = tuple(Participant(name, human=(index == 0))
+                    for index, name in enumerate(('Ada', 'Bot A', 'Bob', 'Bot B')))
+    table = Table(players, (Team('Ada/Bob', (0, 2)), Team('Bots', (1, 3))))
+    assert table.next_player(3) == 0
+    assert table.partner(0) == 2
+    assert table.team_index(3) == 1
+    assert table.team_score([3, 2, 7, 5], 0) == 10
+    try:
+        Table(players[:3])
+    except ValueError:
+        pass
+    else:
+        raise AssertionError('three-player table accepted')
 
 
 if __name__ == '__main__':
