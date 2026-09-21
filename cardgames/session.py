@@ -3,6 +3,7 @@ import json
 from collections import Counter
 from dataclasses import fields, is_dataclass
 from pathlib import Path
+from .storage import backup_once
 from .cards import Card, new_deck, burraco_deck
 from .match import Match
 from .briscola import engine as briscola
@@ -16,6 +17,7 @@ TYPES = {f'{cls.__module__}.{cls.__name__}': cls for cls in (
     tressette.Game, tressette.TrickResult, tressette.Declaration)}
 ENGINES = {'briscola': briscola.Game, 'burraco': burraco.Game,
            'scopa': scopa.Game, 'tressette': tressette.Game}
+VERSION = 2
 
 
 def encode(value):
@@ -63,7 +65,7 @@ class SessionStore:
         self._last = None
 
     def save(self, state):
-        text = json.dumps({'version': 1, 'state': encode(state)}, ensure_ascii=False)
+        text = json.dumps({'version': VERSION, 'state': encode(state)}, ensure_ascii=False)
         if text == self._last and self.path.exists():
             return
         self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -75,9 +77,15 @@ class SessionStore:
     def load(self):
         try:
             raw = json.loads(self.path.read_text(encoding='utf-8'))
-            if raw['version'] != 1:
+            version = raw['version']
+            if version not in (1, VERSION):
                 raise ValueError('Unsupported save version')
             state = decode(raw['state'])
+            if version == 1:
+                # v1 predates the training marker and hand-order preference.
+                state.setdefault('training_used', False)
+                state.setdefault('sort_mode', 'suit')
+                backup_once(self.path, '.v1.bak')
             required = {'game', 'game_kind', 'match', 'player', 'difficulty',
                         'target', 'next_leader', 'recorded', 'log_lines', 'training_used'}
             if not isinstance(state, dict) or not required <= state.keys():
@@ -128,6 +136,8 @@ class SessionStore:
                     or type(match.hands) is not int or match.hands < 0
                     or len(match.totals) != 2 or any(type(n) is not int for n in match.totals)):
                 raise ValueError('Invalid scores')
+            if version == 1:
+                self.save(state)
             return state
         except FileNotFoundError:
             return None

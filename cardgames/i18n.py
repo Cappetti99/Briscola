@@ -358,4 +358,4 @@ TEMPLATES[:0] = [
     (r'puts the (.+) back and frees the (.+)', 'inserisce {0} e recupera {1}'),
 ]
 
-IT.update({'Training': 'Allenamento', 'and the matching .txt': 'e nel relativo file .txt'})
+IT.update({'Training': 'Allenamento', 'Replay': 'Replay', 'and the matching .txt': 'e nel relativo file .txt'})

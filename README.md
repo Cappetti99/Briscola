@@ -60,6 +60,10 @@ Security the first time it is opened. Records, preferences and resumable games
 are still stored in the user's `~/.briscola/` directory, just as they are when
 running from the conda environment.
 
+The current replay file is stored as `last-replay.json`. It contains only public
+move descriptions and card names already exposed on the table; it never stores
+the opponent's hidden hand or the unseen stock.
+
 ## The menu
 
 The app opens on a menu. Pick the game, pick the player the results are filed

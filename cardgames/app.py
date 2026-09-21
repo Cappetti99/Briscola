@@ -9,6 +9,7 @@ modules on the same canvas, and share this shell's menu and record file.
 import os
 from .briscola.view import BriscolaView
 from .features import AppFeatures
+from .replay import Replay
 from . import i18n
 from tkinter import ttk
 import time
@@ -109,6 +110,7 @@ class BriscolaApp(AppFeatures, BriscolaView, tk.Tk):
         self.status_text = ""
         self.stats_window: tk.Toplevel | None = None
         self._recorded = False
+        self.replay = Replay(self.game_kind)
         self._pending: str | None = None
         self._anim_offset: tuple[float, float] | None = None
         self._anim_tag: str | None = None
@@ -807,6 +809,8 @@ class BriscolaApp(AppFeatures, BriscolaView, tk.Tk):
         winner = "you" if result.winner == HUMAN else "pc"
         left = f"{game.tricks_played:>2}. {lead_card.short()} ({opener}) vs {follow_card.short()}"
         self.log_lines.insert(0, (left, f"{winner} +{result.points}"))
+        self.record_public_event("trick", result.winner, left,
+                                (lead_card.short(), follow_card.short()), result.points)
 
     def _set_status(self, text: str):
         self.status_text = text
@@ -838,6 +842,7 @@ class BriscolaApp(AppFeatures, BriscolaView, tk.Tk):
     def note(self, text: str):
         """Record a move in the panel log."""
         self.log_lines.insert(0, (text, ""))
+        self.record_public_event("move", HUMAN if text.startswith("You") else AI, text)
         self._set_status(text)
 
     def after_move(self):

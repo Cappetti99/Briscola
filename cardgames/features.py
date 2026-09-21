@@ -6,6 +6,7 @@ import tkinter as tk
 from tkinter import ttk
 from . import catalog, cardart, i18n, training, ui
 from .session import SessionStore
+from .replay import Replay, replay_path
 from .preferences import Preferences, SPEEDS
 
 
@@ -14,6 +15,8 @@ class AppFeatures:
         folder = self.records.path.parent
         self.preferences = Preferences(folder / 'preferences.json')
         self.sessions = SessionStore(folder / 'session.json')
+        self.replay = Replay(self.game_kind)
+        self.replay_file = replay_path(self.records.path)
         self.language = self.preferences.data['language']
         self.speed = self.preferences.data['speed']
         self.deck_style = self.preferences.data['deck']
@@ -34,6 +37,7 @@ class AppFeatures:
         self.feature_buttons = []
         for label, command in [('Resume game', self.resume_game),
                                ('Hint', self.show_hint), ('Review', self.show_review),
+                               ('Replay', self.show_replay),
                                ('Settings', self.show_settings)]:
             button = tk.Button(self.toolbar, command=command, takefocus=True,
                                highlightthickness=0)
@@ -57,6 +61,8 @@ class AppFeatures:
                 enabled = self.state == 'human' and self.overlay is None
             elif label == 'Review':
                 enabled = self.state != 'menu' and self.game is not None and self.overlay is None
+            elif label == 'Replay':
+                enabled = self.replay_file.exists() and self.overlay is None
             button.configure(text=self.tr(label), state='normal' if enabled else 'disabled')
         self.training_label.configure(text=self.tr('Training') if self._training_used and self.state != 'menu' else '')
         cardart.DECK = self.deck_style
@@ -93,6 +99,7 @@ class AppFeatures:
                 'recorded': self._recorded, 'log_lines': self.log_lines,
                 'training_used': self._training_used,
                 'sort_mode': self.sort_mode})
+            self.replay.save(self.replay_file)
         except (OSError, ValueError) as exc:
             self.status_text = f'Cannot save game: {exc}'
 
@@ -109,6 +116,7 @@ class AppFeatures:
         self.overlay = None
         self.game = saved['game']
         self.game_kind = saved['game_kind']
+        self.replay = Replay(self.game_kind)
         self.match = saved['match']
         self.player = saved['player']
         self.difficulty = saved['difficulty']
@@ -133,6 +141,22 @@ class AppFeatures:
             self.tressette_advance()
         else:
             self.after_move()
+
+    def record_public_event(self, kind, player, text, cards=(), value=0):
+        self.replay.add(kind, player, text, tuple(cards), value)
+        self.replay.save(self.replay_file)
+
+    def show_replay(self):
+        try:
+            replay = Replay.load(self.replay_file)
+        except (OSError, ValueError):
+            self.show_overlay('Replay', 'No replay is available yet.')
+            return
+        if not replay.events:
+            self.show_overlay('Replay', 'No public moves have been recorded yet.')
+            return
+        lines = [f"{index + 1}. {event.text}" for index, event in enumerate(replay.visible_events()[-20:])]
+        self.show_overlay('Replay', '\n'.join(lines))
 
     def show_hint(self):
         if self.overlay is not None:

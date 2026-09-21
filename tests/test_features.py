@@ -13,6 +13,7 @@ from cardgames.burraco import engine as burraco
 from cardgames.scopa import ai as scopa_ai
 from cardgames.tressette import engine as tressette
 from cardgames.match import Match
+from cardgames.replay import Replay
 
 
 def snapshot(kind, game):
@@ -142,6 +143,54 @@ def test_invalid_card_inventory_is_rejected():
             pass
         else:
             raise AssertionError('invalid card inventory accepted')
+
+
+def test_v1_session_is_migrated_and_backed_up():
+    with tempfile.TemporaryDirectory() as folder:
+        path = Path(folder) / 'session.json'
+        game = briscola.Game(seed=12)
+        payload = snapshot('briscola', game)
+        payload.pop('training_used')
+        path.write_text(json.dumps({'version': 1, 'state': encode(payload)}))
+        store = SessionStore(path)
+        restored = store.load()
+        assert restored['training_used'] is False
+        assert restored['sort_mode'] == 'suit'
+        assert json.loads(path.read_text())['version'] == 2
+        assert path.with_name('session.json.v1.bak').exists()
+
+
+def test_v1_preferences_and_records_are_migrated_with_backups():
+    with tempfile.TemporaryDirectory() as folder:
+        path = Path(folder)
+        preferences_path = path / 'preferences.json'
+        preferences_path.write_text(json.dumps({'language': 'it', 'speed': 'fast'}))
+        preferences = Preferences(preferences_path)
+        assert preferences.data['language'] == 'it'
+        assert json.loads(preferences_path.read_text())['version'] == 2
+        assert preferences_path.with_name('preferences.json.v1.bak').exists()
+
+        records_path = path / 'records.json'
+        records_path.write_text(json.dumps({'version': 1, 'last_player': 'ada', 'players': {}}))
+        records_store = records.Records(records_path, path / 'records.txt')
+        assert records_store.current_player == 'ada'
+        assert json.loads(records_path.read_text())['version'] == 2
+        assert records_path.with_name('records.json.v1.bak').exists()
+
+
+def test_replay_roundtrip_preserves_only_recorded_public_events():
+    with tempfile.TemporaryDirectory() as folder:
+        path = Path(folder) / 'replay.json'
+        replay = Replay('briscola')
+        replay.add('trick', 0, 'A/di vs 2/he', ('A/di', '2/he'), 11)
+        replay.save(path)
+        loaded = Replay.load(path)
+        assert loaded.visible_events() == replay.events
+        raw = json.loads(path.read_text())
+        raw['events'][0]['cards'].append('hidden-card')
+        path.write_text(json.dumps(raw))
+        loaded = Replay.load(path)
+        assert 'hidden-card' in loaded.events[0].cards
 
 
 if __name__ == '__main__':

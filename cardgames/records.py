@@ -15,8 +15,9 @@ import os
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path
+from .storage import backup_once
 
-VERSION = 1
+VERSION = 2
 
 WIN, LOSS, DRAW = "win", "loss", "draw"
 
@@ -125,11 +126,18 @@ class Records:
         except (FileNotFoundError, json.JSONDecodeError, OSError, ValueError):
             return  # first run, or an unreadable file: start from scratch
         if isinstance(raw, dict) and isinstance(raw.get("players"), dict):
+            version = raw.get("version", 1)
+            if version not in (1, VERSION):
+                return
+            if version == 1:
+                backup_once(self.path, ".v1.bak")
             self.data = {
-                "version": raw.get("version", VERSION),
+                "version": VERSION,
                 "last_player": raw.get("last_player"),
                 "players": raw["players"],
             }
+            if version == 1:
+                self.save()
 
     def save(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
