@@ -10,6 +10,7 @@ for resuming games, training and settings.
 ## Contents
 
 - [Install and run](#install-and-run)
+- [macOS application build](#macos-application-build)
 - [The menu](#the-menu)
 - [Resume, training and preferences](#resume-training-and-preferences)
 - [Briscola](#briscola)
@@ -46,6 +47,18 @@ and the canvas is scaled to whatever fits, between 0.65 and 1.7 of it. On a
 
 Nothing outside the standard library is required — only Python 3.10+ (for the
 `X | None` type syntax) and Tk, both provided by the environment file.
+
+## macOS application build
+
+The repository includes a separate **macOS package** workflow. From GitHub,
+open Actions → `macOS package` → `Run workflow`; it builds `CardGames.app`,
+checks the bundle and uploads `CardGames-macOS.zip` as a downloadable artifact.
+Pushing a version tag such as `v1.0.0` runs the same build automatically.
+
+The package is unsigned, so macOS may ask you to confirm it in Privacy &
+Security the first time it is opened. Records, preferences and resumable games
+are still stored in the user's `~/.briscola/` directory, just as they are when
+running from the conda environment.
 
 ## The menu
 

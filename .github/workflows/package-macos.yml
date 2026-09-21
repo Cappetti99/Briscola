@@ -1,0 +1,44 @@
+name: macOS package
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build CardGames.app
+    runs-on: macos-13
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install packager
+        run: python -m pip install --upgrade pip pyinstaller
+
+      - name: Build application
+        run: pyinstaller --noconfirm --clean packaging/CardGames.spec
+
+      - name: Smoke test bundle contents
+        run: |
+          test -d dist/CardGames.app
+          test -x dist/CardGames.app/Contents/MacOS/CardGames
+          test -f dist/CardGames.app/Contents/Info.plist
+
+      - name: Zip application
+        run: ditto -c -k --sequesterRsrc --keepParent dist/CardGames.app CardGames-macOS.zip
+
+      - name: Upload application artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: CardGames-macOS
+          path: CardGames-macOS.zip
+          if-no-files-found: error
