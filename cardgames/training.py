@@ -7,6 +7,7 @@ from .scopa import ai as scopa
 from .tressette import ai as tressette
 from .burraco import ai as burraco
 from .burraco.engine import InvalidMeld, Stranded, wild_stands_for
+from .poker import ai as poker
 
 
 def suggest(kind, game):
@@ -31,6 +32,25 @@ def suggest(kind, game):
         index = tressette.choose_card(game, 0, tressette.NORMAL, random.Random(0))
         return (f'Play {hand[index]}.\n'
                 'Respect the lead suit, preserve valuable cards and favour control of the suit.')
+    if kind == 'poker':
+        # The normal level reads only what this player may see, so the
+        # suggestion cannot depend on the opponent's cards or the deck —
+        # and a fixed seed keeps it the same suggestion twice over.
+        action, amount = poker.choose_action(game, 0, poker.NORMAL, random.Random(0))
+        if action == 'fold':
+            move, reason = 'Fold.', 'The price is more than the hand can stand.'
+        elif action == 'check':
+            move, reason = 'Check.', 'Nothing to gain by betting: take the free card.'
+        elif action == 'call':
+            move = f'Call {game.to_call(0)}.'
+            reason = 'The pot is large enough to justify the price of the next card.'
+        elif action == 'raise':
+            move = f'Raise to {amount}.'
+            reason = 'The hand is ahead of what the other side is likely to hold.'
+        else:
+            move = f'Bet {amount}.'
+            reason = 'A hand worth winning is worth betting for value.'
+        return f'{move}\n{reason}'
     if not game.phase.drawn:
         if game.discards and burraco._pile_is_worth_taking(game, 0, burraco.NORMAL):
             return 'Take the discard pile.\nThe visible cards improve your possible melds enough to justify the cost.'

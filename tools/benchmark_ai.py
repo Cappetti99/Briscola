@@ -7,6 +7,7 @@ import time
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from cardgames.briscola import ai as briscola_ai, engine as briscola
+from cardgames.poker import ai as poker_ai, engine as poker
 from cardgames.scopa import ai as scopa_ai, engine as scopa
 from cardgames.tressette import ai as tressette_ai, engine as tressette
 
@@ -24,6 +25,10 @@ def main():
          lambda game, rng: scopa_ai.choose_move(game, 1, 'hard', rng)),
         ('Tressette', lambda seed: tressette.Game(seed, first_leader=1),
          lambda game, rng: tressette_ai.choose_card(game, 1, 'hard', rng)),
+        # The dealer acts first in Hold'em, so the button goes to the seat
+        # the sample is timed for.
+        ('Poker', lambda seed: poker.Game(seed, first_player=1),
+         lambda game, rng: poker_ai.choose_action(game, 1, 'hard', rng)),
     ):
         times = []
         for seed in range(args.samples):

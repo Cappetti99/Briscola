@@ -183,7 +183,28 @@ formano una napoletana da 3 punti. Tre assi, due o tre valgono
 3 punti; quattro dello stesso valore ne valgono 4.
 
 Clic o tasti 1–9 e 0 per la decima carta. Vince chi raggiunge
-l'obiettivo in vantaggio; in caso di parità si continua.'''}
+l'obiettivo in vantaggio; in caso di parità si continua.''',
+ 'poker': '''Due carte per ciascuno e cinque al centro, con quattro
+giri di puntate. Vince la migliore combinazione di cinque carte su sette.
+
+Heads-up il dealer paga il piccolo buio e gioca per primo prima del
+flop; il grande buio gioca per primo dopo. Ogni mano inizia con 100
+fiches a testa e le fiches rimaste a fine mano sono il punteggio.
+
+Passa, check, chiama, punta o alza. Una puntata deve essere
+pareggiata prima che escano le carte, e un rilancio deve avere
+risposta. All in mette tutte le fiches e il tavolo finisce di
+fare le ultime carte.
+
+Forza: scala reale, poker, full, colore, scala, tris, doppia
+coppia, coppia, carta alta. L'asso è alto e basso solo in
+A-2-3-4-5. A parità la mano si divide e il fiches dispari va
+a sinistra del dealer.
+
+Regole complete: https://en.wikipedia.org/wiki/Texas_hold_%27em
+
+Comandi: 1 passa, 2 check o chiama, 3 alza, 4 alza del piatto,
+5 all in. Ogni azione è anche un pulsante nel pannello.'''}
 
 
 def translate(text, language='en', italian_suits=False):
@@ -360,3 +381,85 @@ TEMPLATES[:0] = [
 
 IT.update({'Training': 'Allenamento', 'Replay': 'Replay', 'Tutorial': 'Tutorial',
            'Next': 'Avanti', 'Close': 'Chiudi', 'and the matching .txt': 'e nel relativo file .txt'})
+
+
+# --- poker: the menu, the table, the buttons and the hands read out -------
+IT.update({
+    "Hold'em for two: two cards down, five in the middle, chips at stake.":
+        "Hold'em per due: due carte in mano, cinque sul tavolo, tutte le fiches in gioco.",
+    'Bets its own two cards and little else. A gentle start.':
+        'Punta sulle sue due carte e poco altro. Per iniziare.',
+    'Plays the price: its hand against what the pot asks.':
+        'Gioca il prezzo: la sua mano contro ciò che chiede il piatto.',
+    'Counts its outs by sampling the cards it cannot see.':
+        'Conta le sue uscite provando le carte che non può vedere.',
+    'POKER': 'POKER',
+    'Fold': 'Passa', 'Check': 'Check', 'Check or call': 'Check o chiama',
+    'Raise': 'Alza', 'Pot': 'Piatto', 'All in': 'All in',
+    'You check': 'Check', 'The computer checks': 'Il computer fa check',
+    'You fold': 'Passi', 'The computer folds': 'Il computer passa',
+    'chips': 'fiches', 'preflop': 'pre-flop',
+    'keys: 1 fold - 2 call - 3 raise - 4 pot - 5 all in - N new - M menu - S stats':
+        'tasti: 1 passa - 2 chiama - 3 alza - 4 piatto - 5 all in - N nuova - M menu - S statistiche',
+    'The price is more than the hand can stand.':
+        'Il prezzo è troppo per la mano che hai.',
+    'Nothing to gain by betting: take the free card.':
+        'Niente da guadagnare puntando: prendi la carta gratuita.',
+    'The pot is large enough to justify the price of the next card.':
+        'Il piatto giustifica il prezzo della prossima carta.',
+    'A hand worth winning is worth betting for value.':
+        'Una mano che vale la pena vincere merita una puntata di valore.',
+    # Hands read out at a showdown, plural of a rank included.
+    'fours': 'quattro', 'fives': 'cinque', 'sixes': 'sei', 'sevens': 'sette',
+    'eights': 'otto', 'nines': 'nove', 'tens': 'dieci', 'jacks': 'fanti',
+    'queens': 'donne', 'kings': 're',
+    'ace': 'asso', 'two': 'due', 'three': 'tre', 'four': 'quattro',
+    'five': 'cinque', 'six': 'sei', 'seven': 'sette', 'eight': 'otto',
+    'nine': 'nove', 'ten': 'dieci', 'jack': 'fante', 'queen': 'donna',
+    'king': 're',
+})
+TEMPLATES[:0] = [
+    (r'Your move: pot (\d+), to call (\d+)\.', 'Tocca a te: piatto {0}, da chiamare {1}.'),
+    (r'Your move: pot (\d+), check or bet\.', 'Tocca a te: piatto {0}, check o puntata.'),
+    (r'Your cards: (.+)', 'Le tue carte: {0}'),
+    (r'Your hand: (.+)', 'La tua mano: {0}'),
+    (r'Call (\d+)', 'Chiama {0}'),
+    (r'Raise to (\d+)', 'Alza a {0}'),
+    (r'Pot (\d+)', 'Piatto {0}'),
+    (r'All in (\d+)', 'All in {0}'),
+    (r'You call (\d+)', 'Chiama {0}'),
+    (r'The computer calls (\d+)', 'Il computer chiama {0}'),
+    (r'You bet (\d+)', 'Punti {0}'),
+    (r'The computer bets (\d+)', 'Il computer punta {0}'),
+    (r'You raise to (\d+)', 'Alzi a {0}'),
+    (r'The computer raises to (\d+)', 'Il computer alza a {0}'),
+    (r'You win (\d+): the computer folds\.', 'Vinci {0}: il computer passa.'),
+    (r'The computer wins (\d+): you fold\.', 'Il computer vince {0}: passi.'),
+    (r'You win (\d+) with (.+)\.', 'Vinci {0} con {1}.'),
+    (r'The computer wins (\d+) with (.+)\.', 'Il computer vince {0} con {1}.'),
+    (r'Split pot of (\d+): both have (.+)\.', 'Piatto pari di {0}: entrambi hanno {1}.'),
+    (r'a straight flush to the (.+)', 'scala reale a {0}'),
+    (r'a full house, (.+) full of (.+)', 'full di {0} e {1}'),
+    (r'two pair, (.+) and (.+)', 'doppia coppia, {0} e {1}'),
+    (r'a straight to the (.+)', 'scala a {0}'),
+    (r'a flush, (.+) high', 'colore, {0} alto'),
+    (r'three of a kind, (.+)', 'tris di {0}'),
+    (r'four of a kind, (.+)', 'poker di {0}'),
+    (r'a pair of (.+)', 'coppia di {0}'),
+    (r'(.+) high', '{0} alto'),
+]
+
+IT.update({
+    'New hand of Poker.': 'Nuova mano di Poker.',
+    'You folded.': 'Hai passato.',
+    'Wait for your turn.': 'Attendi il tuo turno.',
+    'There is nothing to fold to: check or bet.':
+        'Non c\'è nulla da cui passare: check o puntata.',
+    'There is nothing to raise: check or call.':
+        'Non c\'è nulla da rilanciare: check o chiamata.',
+})
+TEMPLATES[:0] = [
+    (r'Bet (\d+)', 'Punta {0}'),
+    (r'bet (\d+)', 'puntata {0}'),
+    (r'(\d+) chips', '{0} fiches'),
+]

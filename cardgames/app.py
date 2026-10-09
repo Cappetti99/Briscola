@@ -2,8 +2,9 @@
 
 Everything is drawn on a single Canvas, so the whole window has a consistent
 look on every platform and can be exported with `tools/screenshots.py`.
-Briscola is drawn here; Burraco and Scopa draw through their own view
-modules on the same canvas, and share this shell's menu and record file.
+Briscola is drawn here; Burraco, Scopa, Tressette and Poker draw through
+their own view modules on the same canvas, and share this shell's menu and
+record file.
 """
 
 import os
@@ -20,6 +21,9 @@ from tkinter import simpledialog
 from . import cardart, catalog, records, ui
 from .burraco import engine as burraco_engine
 from .burraco import view as burraco_view
+from .poker import ai as poker_ai
+from .poker import engine as poker_engine
+from .poker import view as poker_view
 from .scopa import ai as scopa_ai
 from .scopa import engine as scopa_engine
 from .scopa import view as scopa_view
@@ -220,6 +224,18 @@ class BriscolaApp(AppFeatures, BriscolaView, tk.Tk):
             self._set_status(f"New deal of Tressette. {who}.{said}")
             self.tressette_advance()
             return
+        if self.game_kind == ui.POKER:
+            if self.match is None or self.match.over or self._new_match:
+                self.match = poker_engine.Match(target=self.target)
+            self._new_match = False
+            # The button alternates hand to hand: whoever holds it posts the
+            # small blind and acts first before the flop.
+            self.game = poker_engine.Game(first_player=self.next_leader)
+            self.hovered = None
+            self.next_leader = 1 - self.next_leader
+            self._set_status("New hand of Poker.")
+            self.poker_advance()
+            return
         self.game = Game(first_leader=self.next_leader)
         self.next_leader = 1 - self.next_leader
         who = "you lead" if self.game.leader == HUMAN else "the computer leads"
@@ -345,12 +361,14 @@ class BriscolaApp(AppFeatures, BriscolaView, tk.Tk):
         if self._worker_busy or self._pending is None:
             return
         if self.state == S_SHOW:
-            finish = (self._tressette_resolve
-                      if self.game_kind == ui.TRESSETTE else self._resolve)
+            finish = ({ui.TRESSETTE: self._tressette_resolve,
+                       ui.POKER: self._poker_hand_over}.get(
+                           self.game_kind, self._resolve))
         elif self.state == S_AI:
             finish = {ui.BURRACO: self._burraco_ai_turn,
                       ui.SCOPA: self._scopa_ai_turn,
-                      ui.TRESSETTE: self._tressette_ai_move}.get(
+                      ui.TRESSETTE: self._tressette_ai_move,
+                      ui.POKER: self._poker_ai_turn}.get(
                           self.game_kind, self._ai_move)
         else:
             return
@@ -445,6 +463,10 @@ class BriscolaApp(AppFeatures, BriscolaView, tk.Tk):
             tressette_view.draw(self)
             tressette_view.draw_panel(self)
             self._draw_status()
+        elif self.game_kind == ui.POKER:
+            poker_view.draw(self)
+            poker_view.draw_panel(self)
+            self._draw_status()
         else:
             game = self.game
             assert game is not None
@@ -508,6 +530,9 @@ class BriscolaApp(AppFeatures, BriscolaView, tk.Tk):
         return hand_slot_at(x, y, len(game.hands[HUMAN]))
 
     def _on_motion(self, event):
+        if self.state == S_HUMAN and self.game_kind == ui.POKER:
+            poker_view.on_motion(self, *ui.to_design(event.x, event.y))
+            return
         if self.state == S_HUMAN and self.game_kind == ui.BURRACO:
             burraco_view.on_motion(self, *ui.to_design(event.x, event.y))
             return
@@ -526,6 +551,9 @@ class BriscolaApp(AppFeatures, BriscolaView, tk.Tk):
         burraco_view.scroll_hand(self, -1 if event.delta > 0 else 1)
 
     def _on_canvas_leave(self, _event=None):
+        if self.game_kind == ui.POKER:
+            poker_view.on_motion(self, -1, -1)
+            return
         if self.game_kind == ui.TRESSETTE:
             tressette_view.on_motion(self, -1, -1)
             return
@@ -795,6 +823,9 @@ class BriscolaApp(AppFeatures, BriscolaView, tk.Tk):
         elif self.game_kind == ui.TRESSETTE:
             # Ten cards need ten keys, and the tenth of them is the zero.
             hint = "keys: 1-9 and 0 play - N new - M menu - S stats"
+        elif self.game_kind == ui.POKER:
+            hint = ("keys: 1 fold - 2 call - 3 raise - 4 pot - 5 all in"
+                    " - N new - M menu - S stats")
         else:
             hint = "keys: 1 2 3 play - N new - M menu - S stats - D difficulty"
         c.create_text(WIN_W - 16, TABLE_H + STATUS_H / 2, text=hint,
@@ -1052,6 +1083,68 @@ class BriscolaApp(AppFeatures, BriscolaView, tk.Tk):
                        f"the computer {game.bonus[AI]}.")
         self._finish_match_hand(detail, game.first_leader)
 
+    # --- Poker flow -------------------------------------------------------
+    #
+    # A hand of poker advances a decision at a time. Whoever has the move
+    # acts, the window waits for the other side, and a hand that has ended
+    # gets one pause to be read before the scores come up — a pause a click
+    # or the space bar finishes at once, like every other one here.
+
+    def poker_advance(self):
+        """Wait for you, let the computer move, or wind the hand up."""
+        game = self.game
+        self._cancel_pending()
+        if game.game_over:
+            self._set_status(game.result_text)
+            self.state = S_SHOW
+            self.render()
+            self._pending = self.after(self.delay(TRICK_DELAY),
+                                       self._poker_hand_over)
+            trace(f"poker hand over, scoring in {self.delay(TRICK_DELAY)} ms")
+            return
+        if game.turn == AI:
+            self.state = S_AI
+            self.render()
+            self._pending = self.after(self.delay(AI_DELAY),
+                                       self._poker_ai_turn)
+            trace(f"poker computer to act in {self.delay(AI_DELAY)} ms")
+            return
+        self.state = S_HUMAN
+        owed = game.to_call(HUMAN)
+        if owed > 0:
+            self._set_status(f"Your move: pot {game.pot}, to call {owed}.")
+        else:
+            self._set_status(f"Your move: pot {game.pot}, check or bet.")
+        self.render()
+
+    def _poker_ai_turn(self):
+        self._pending = None
+        if self.difficulty == poker_ai.HARD:
+            level = self.difficulty
+            self.compute_ai(
+                lambda snapshot: poker_ai.choose_action(snapshot, AI, level),
+                self._apply_poker_ai)
+            return
+        move = poker_ai.choose_action(self.game, AI, self.difficulty)
+        self._apply_poker_ai(move)
+
+    def _apply_poker_ai(self, move):
+        action, amount = move
+        self.note(self.game.act(AI, action, amount))
+        self.poker_advance()
+
+    def _poker_hand_over(self):
+        self._pending = None
+        self.state = S_OVER
+        self.render()
+        self._finish_poker()
+
+    def _finish_poker(self):
+        game = self.game
+        you, them = game.scores()
+        detail = f"This hand: {you} to {them}.\n{game.result_text}"
+        self._finish_match_hand(detail, game.first_player)
+
     def set_game(self, kind: str):
         """Pick which game the Start button will deal.
 
@@ -1223,6 +1316,8 @@ class BriscolaApp(AppFeatures, BriscolaView, tk.Tk):
                 self._play_human(index)
             elif self.game_kind == ui.SCOPA:
                 scopa_view.click_card(self, index)
+            elif self.game_kind == ui.POKER:
+                poker_view.press(self, index)
             else:
                 tressette_view.play(self, index)
         elif char == " " or keysym in ("Return", "KP_Enter"):

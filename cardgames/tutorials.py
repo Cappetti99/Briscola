@@ -30,6 +30,11 @@ TUTORIALS = {
         Step("Follow suit", "You must follow the suit led when you can. The highest card of that suit wins."),
         Step("Counting", "The ace is worth three thirds; the two, three and face cards are worth one."),
     ),
+    "poker": (
+        Step("The aim", "Win chips. Your two cards plus the five in the middle make the best five you can."),
+        Step("Your turn", "Fold, check, call or raise. Betting carries on until both sides have matched."),
+        Step("Heads-up", "The button posts the small blind and acts first before the flop; the big blind acts first after it."),
+    ),
 }
 
 

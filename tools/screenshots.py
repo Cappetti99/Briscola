@@ -222,6 +222,35 @@ def shot_tressette(store):
     app.destroy()
 
 
+def shot_poker(store):
+    """The Poker table on the flop, with a bet from the other side to answer."""
+    from cardgames import ui
+    from cardgames.poker import engine as poker_engine
+    from cardgames.poker.engine import AI, HUMAN
+
+    app = gui.BriscolaApp(records_store=store, scale=1.0)
+    gui.AI_DELAY = gui.TRICK_DELAY = 5
+    app.set_game(ui.POKER)
+    app.update()
+    app.start_game()
+    app._cancel_pending()
+
+    game = app.game
+    lines = [
+        game.act(HUMAN, "raise", 6),
+        game.act(AI, "call"),
+        # The big blind acts first once the flop is out, and it bets.
+        game.act(AI, "bet", 4),
+    ]
+    for line in lines:
+        app.note(line)
+    app.hovered = None
+    app.poker_advance()          # the player's move, table and panel drawn
+    settle(app, 0.3)
+    export(app.canvas, gui.WIN_W, gui.WIN_H, "poker")
+    app.destroy()
+
+
 def shot_statistics(store):
     root = tk.Tk()
     root.withdraw()
@@ -287,6 +316,7 @@ SHOTS = {
     "menu": shot_menu,
     "table": shot_table,
     "burraco": shot_burraco,
+    "poker": shot_poker,
     "scopa": shot_scopa,
     "tressette": shot_tressette,
     "statistics": shot_statistics,

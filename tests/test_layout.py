@@ -13,9 +13,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from cardgames.briscola import layout as briscola
 from cardgames.burraco import layout as burraco
+from cardgames.poker import layout as poker
 from cardgames.scopa import layout as scopa
 from cardgames.tressette import layout as tressette
-from cardgames.ui import TABLE_W
+from cardgames.ui import TABLE_H, TABLE_W
 
 
 # --- Briscola -------------------------------------------------------------
@@ -408,6 +409,85 @@ def test_the_two_tressette_table_slots_do_not_overlap():
     (ax, ay), (bx, by) = (tressette.table_slot(tressette.AI),
                           tressette.table_slot(tressette.HUMAN))
     assert ax + tressette.TABLE_CARD_W <= bx or bx + tressette.TABLE_CARD_W <= ax
+
+
+# --- Poker ----------------------------------------------------------------
+
+def test_the_five_board_cards_are_centred_and_do_not_overlap():
+    left = poker.board_x(0)
+    right = poker.board_x(poker.BOARD_SLOTS - 1) + poker.BOARD_W
+    assert abs((left + right) / 2 - poker.CENTER_X) < 0.5
+    for index in range(poker.BOARD_SLOTS - 1):
+        assert (poker.board_x(index) + poker.BOARD_W
+                <= poker.board_x(index + 1))
+
+
+def test_a_two_card_hand_is_centred():
+    left = poker.hole_x(0)
+    right = poker.hole_x(1) + poker.HOLE_W
+    assert abs((left + right) / 2 - poker.CENTER_X) < 0.5
+    assert left + poker.HOLE_W + poker.HOLE_GAP == poker.hole_x(1)
+
+
+def test_every_poker_row_keeps_its_own_band():
+    """The pot, the bets and the street label sit between the cards.
+
+    Each of them has to stay clear of the rows above and below, including
+    a card lifted by the hover — a label that lands on a card is a label
+    that cannot be read.
+    """
+    assert poker.NAME_AI_Y + 8 < poker.HOLE_AI_Y
+    assert poker.HOLE_AI_Y + poker.HOLE_H < poker.BET_AI_Y - 16
+    assert poker.BET_AI_Y + 16 < poker.POT_Y - 12
+    assert poker.POT_Y + 14 < poker.BOARD_Y
+    assert poker.BOARD_Y + poker.BOARD_H < poker.BET_YOU_Y - 16
+    assert poker.BET_YOU_Y + 16 < poker.STREET_Y - 8
+    assert poker.STREET_Y + 8 < poker.HOLE_YOU_Y - poker.LIFT
+    assert poker.HOLE_YOU_Y + poker.HOLE_H < poker.NAME_YOU_Y - 8
+    assert poker.NAME_YOU_Y + 12 < TABLE_H
+    assert poker.board_x(poker.BOARD_SLOTS - 1) + poker.BOARD_W <= TABLE_W
+
+
+def test_the_pointer_finds_each_card_of_your_hand():
+    count = 2
+    for index in range(count):
+        middle = poker.hole_x(index) + poker.HOLE_W / 2
+        found = poker.hole_slot_at(middle, poker.HOLE_YOU_Y + 40, count,
+                                   poker.HOLE_YOU_Y)
+        assert found == index, (index, found)
+
+
+def test_the_hit_test_reaches_a_lifted_card_but_not_the_abyss():
+    middle = poker.hole_x(1) + poker.HOLE_W / 2
+    # A card that has risen under the pointer is still the card under it.
+    assert poker.hole_slot_at(middle, poker.HOLE_YOU_Y - poker.LIFT + 1,
+                              2, poker.HOLE_YOU_Y) == 1
+    # Above the lift, below the card, and with a folded hand: nobody home.
+    assert poker.hole_slot_at(middle, poker.HOLE_YOU_Y - poker.LIFT - 1,
+                              2, poker.HOLE_YOU_Y) is None
+    assert poker.hole_slot_at(middle, poker.HOLE_YOU_Y + poker.HOLE_H + 1,
+                              2, poker.HOLE_YOU_Y) is None
+    assert poker.hole_slot_at(middle, poker.HOLE_YOU_Y + 40, 0,
+                              poker.HOLE_YOU_Y) is None
+
+
+def test_the_dealer_button_sits_beside_the_cards_it_marks():
+    for player in (poker.HUMAN, poker.AI):
+        x, y = poker.dealer_button(player)
+        assert x > poker.hole_x(1) + poker.HOLE_W
+        assert x + 13 < TABLE_W
+        if player == poker.HUMAN:
+            assert poker.HOLE_YOU_Y < y < poker.HOLE_YOU_Y + poker.HOLE_H
+        else:
+            assert poker.HOLE_AI_Y < y < poker.HOLE_AI_Y + poker.HOLE_H
+
+
+def test_the_bets_and_the_name_rows_stay_inside_the_table():
+    for player in (poker.HUMAN, poker.AI):
+        _x, y = poker.bet_slot(player)
+        assert 0 < y - 13 and y + 13 < TABLE_H
+    for y in (poker.NAME_AI_Y, poker.NAME_YOU_Y):
+        assert 0 < y < TABLE_H
 
 
 if __name__ == "__main__":

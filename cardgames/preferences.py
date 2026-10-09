@@ -9,7 +9,7 @@ DEFAULTS = {'language': 'en', 'speed': 'normal', 'deck': 'french',
             'sort': 'suit'}
 CHOICES = {'language': ('it', 'en'), 'speed': ('slow', 'normal', 'fast'),
            'deck': ('french', 'italian'),
-           'game': ('briscola', 'burraco', 'scopa', 'tressette'),
+           'game': ('briscola', 'burraco', 'scopa', 'tressette', 'poker'),
            'difficulty': ('easy', 'normal', 'hard'), 'sort': ('suit', 'rank')}
 SPEEDS = {'slow': 1.6, 'normal': 1.0, 'fast': 0.35}
 

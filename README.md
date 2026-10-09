@@ -1,9 +1,15 @@
 # Card games
 
-Four Italian card games against the computer, in one Tkinter window:
-**Briscola**, **Burraco**, **Scopa** and **Tressette**. Every card is drawn by
+Five card games against the computer, in one Tkinter window:
+**Briscola**, **Burraco**, **Scopa**, **Tressette** and **Poker** — four
+Italian classics and a round of heads-up Hold'em. Every card is drawn by
 the code, so there are no image assets to install, and each game table is drawn on a single Canvas, with a shared toolbar
 for resuming games, training and settings.
+
+The current implementation is single-player: each game is played against the
+computer. The shared seating model already validates two-player tables and
+four-player tables split into two pairs, so team play can be added without
+changing the individual game engines.
 
 ![The opening menu](docs/menu.png)
 
@@ -17,6 +23,7 @@ for resuming games, training and settings.
 - [Burraco](#burraco)
 - [Scopa](#scopa)
 - [Tressette](#tressette)
+- [Poker](#poker)
 - [The cards](#the-cards)
 - [Match records](#match-records)
 - [Pacing and performance](#pacing-and-performance)
@@ -97,7 +104,7 @@ defaults for existing users.
 
 An unfinished game is saved automatically after state changes and on exit to
 `session.json` in the same directory. **Resume game** restores the player, exact
-hands, stock, scores, pot/meld state, turn and match progress for all four games.
+hands, stock, scores, pot/meld state, turn and match progress for all five games.
 It also supports resuming between hands. There is one resume slot: starting a
 new game replaces it. Finishing a match clears it. The file is versioned JSON;
 invalid saves are reported and cannot execute code.
@@ -109,13 +116,18 @@ competitive records, including subsequent hands. A fresh match resets this flag.
 **Review** shows the last completed trick in Briscola/Tressette and recent moves
 in Scopa/Burraco. It does not undo moves or reveal hidden draws.
 
+**Replay** shows the latest public move log. Replays are stored as
+`last-replay.json` beside the record files and contain only descriptions and
+card names already exposed on the table; they never store a hidden hand or the
+unseen stock. Starting another game replaces the previous replay.
+
 **Tutorial** opens a short three-step lesson for the selected game. It can be
 opened from the menu or the table and never modifies a match or its records.
 
-The shared multiplayer model now validates two-player tables and four-player
+The shared multiplayer model validates two-player tables and four-player
 tables arranged as two pairs, including clockwise turns, partners and team
-scores. The existing engines still use their two-player rules; adapting Burraco
-and Tressette to pairs is the next implementation step on top of this model.
+scores. It is currently a foundation only: the existing engines still use
+their two-player rules.
 
 Statistics starts filtered to the selected game. Use the game and difficulty
 selectors to narrow the results or choose **All games** for the overall record.
@@ -399,6 +411,53 @@ A deal is worth eleven points, so a match is played to 21 or 31 — or a single
 deal, if you would rather. As in the other two, the target has to be passed
 **and** the lead held: arriving level plays another deal.
 
+## Poker
+
+![The Poker table](docs/poker.png)
+
+Heads-up **Texas Hold'em**: two cards down each, five in the middle, and four
+rounds of betting around them — preflop, flop, turn and river. Full rules:
+[Wikipedia](https://en.wikipedia.org/wiki/Texas_hold_%27em).
+
+- **Heads-up, the button posts the small blind and acts first before the
+  flop**, and the big blind acts first after it: the reverse of a full ring,
+  and the detail that is usually written down backwards.
+- Every hand starts from **100 chips each**, and the stacks it finishes with
+  are its score, exactly as the other games score their points. A match runs
+  to 200 or 400, or for a single hand.
+- Fold, check, call, bet or raise, and **all in**, which runs the rest of the
+  board out with no more betting. Chips one side put in beyond the other come
+  straight back: with two players there are no side pots to work out.
+- A split pot is split down the middle. Hand order is the standard one, with
+  the ace high, and low only in A-2-3-4-5.
+
+| Action | How |
+| --- | --- |
+| Fold | `1`, or the fold button |
+| Check, or call what is in front of you | `2`, or the check/call button |
+| Raise to the minimum | `3`, or the raise button |
+| Raise by the size of the pot | `4`, or the pot button |
+| Put every chip in | `5`, or the all in button |
+| New hand | `New game`, or `N` |
+
+### Difficulty
+
+| Level | How it plays |
+| --- | --- |
+| **Easy** | Bets its own two cards and little else. |
+| **Normal** | Prices its hand against the pot — and never folds away a minimum call. |
+| **Expert** | Counts its outs by sampling the cards it cannot see. |
+
+Normal works from what it is entitled to see: its own two cards, the board,
+the pot and the price of the next card — never the opponent's hand or the
+deck, which is also what makes it safe to offer as the training hint. The
+expert deals the unseen cards out again and again, counts how often each of
+them wins out to the river, and plays the price against that equity: value
+hands raise for it, draws semi-bluff at the right price, and a call has to
+out-earn what it costs. Like the other searches it runs on the worker
+thread; see the timing sample under [Pacing and
+performance](#pacing-and-performance).
+
 ## The cards
 
 ![All 40 Briscola cards](docs/deck.png)
@@ -422,7 +481,7 @@ traditional red and black, or `STYLE = "minimal"` for faces with no pips.
 ## Match records
 
 Every finished game is recorded against a player name (your system user name by
-default), for either game. Records are written to **two files**, side by side:
+default). Records are written to **two files**, side by side:
 
 - `~/.briscola/records.json` — the structured store the app reads back.
 - `~/.briscola/records.txt` — a plain-text log, one line per match, appended as
@@ -466,19 +525,27 @@ development machine (September 2026):
 | Briscola Expert | 124 ms | 125 ms |
 | Scopa Expert | 278 ms | 387 ms |
 | Tressette Expert | 609 ms | 658 ms |
+| Poker Expert | 186 ms | 189 ms |
 
 Expert decisions now run on a **worker thread with a copy of the game state**.
 The Tk thread polls for the result and applies it only if the same game is still
 active. Returning to the menu, starting a new game or closing the window invalidates
 pending results. Workers never call Tk or mutate the live game.
 
-Search budgets remain 120 ms for Briscola and 900 ms for Scopa/Tressette, checked
-between batches of sampled worlds. They are soft limits, not strict maximum
-latencies; all three searches use a monotonic clock. Easy and Normal keep their
-existing synchronous path.
+Search budgets remain 120 ms for Briscola, 900 ms for Scopa/Tressette and
+450 ms for Poker, checked between batches of sampled worlds. They are soft
+limits, not strict maximum latencies; all of the searches use a monotonic
+clock. Easy and Normal keep their existing synchronous path.
 
 For a repeatable timing sample, run `python tools/benchmark_ai.py --samples 10`.
 These are search times, not UI stalls or guarantees for every game position.
+
+To compare Poker's Easy, Normal and Expert levels over position-balanced
+matches, run `python tools/benchmark_poker_strength.py`. By default it plays
+200 hands per matchup and limits Expert sampling to 20 ms per decision so the
+comparison completes quickly; use `--hands` and `--expert-budget` to change
+the sample size and search time. The report includes win counts, average
+stacks, chip share and an approximate 95% interval for the chip margin.
 
 Idle — on the menu or waiting for your card — the process measures **0.2% CPU
 and about 78 MB resident**. If the interface ever misbehaves, run it with
@@ -507,6 +574,7 @@ rather than swallowed.
 | `cardgames/burraco/` | `engine.py` rules, `ai.py` opponent, `layout.py` geometry, `view.py` table |
 | `cardgames/scopa/` | `engine.py` rules, `ai.py` opponent, `layout.py` geometry, `view.py` table |
 | `cardgames/tressette/` | `engine.py` rules, `ai.py` opponent, `layout.py` geometry, `view.py` table |
+| `cardgames/poker/` | `engine.py` rules and hand evaluation, `ai.py` opponent, `layout.py` geometry, `view.py` table |
 | `cardgames/catalog.py` | Shared game metadata: rules, levels, targets and controls |
 | `tools/screenshots.py` | Regenerates the images in `docs/` |
 | `tests/` | See below |
@@ -525,19 +593,21 @@ conda run -n briscola python tests/test_burraco.py
 
 | File | Tests | Time | Covers |
 | --- | --- | --- | --- |
-| `test_features.py` | 8 | < 1 s | Save round trips, corrupted saves, preferences, filtered stats and fair hints |
+| `test_features.py` | 12 | < 1 s | Save round trips, corrupted saves, preferences, filtered stats and fair hints |
 | `test_features_gui.py` | 12 | a few seconds | Resume, training, settings, filters and worker cancellation |
 | `test_catalog.py` | 3 | < 0.1 s | Shared metadata for all games and menu configuration |
-| `test_layout.py` | 40 | 0.05 s | Table geometry for all four games, with no window at all |
+| `test_layout.py` | 47 | 0.05 s | Table geometry for every game, with no window at all |
 | `test_records.py` | 7 | 0.05 s | The json store and the text log |
+| `test_poker.py` | 21 | 4 s | Hold'em rules, betting, all in, scoring, the opponent, the hint |
 | `test_burraco.py` | 70 | 4 s | Burraco rules, melds, wild cards, scoring, the opponent |
 | `test_scopa.py` | 59 | 11 s | Scopa rules, taking, the scope, the four points, the opponent |
 | `test_tressette.py` | 32 | 7 s | Tressette order, the suit obligation, thirds, declarations |
 | `test_engine.py` | 8 | 18 s | Briscola rules and the relative strength of the levels |
-| `test_gui.py` | 51 | 28 s | The window: event routing, turns, records |
+| `test_gui.py` | 56 | 24 s | The window: event routing, turns, records |
 
 `test_gui.py` drives the interface with real Tk mouse events, including whole
-hands of Burraco, Scopa and Tressette played only by clicking real controls. Its windows
+hands of Burraco, Scopa and Tressette played only by clicking real controls,
+and hands of Poker driven from the keyboard. Its windows
 are parked off screen so they neither steal focus nor catch a stray click.
 
 ## Continuous integration
@@ -580,12 +650,12 @@ flaky on macOS.
 
 ## Ideas for later
 
-- Burraco for four players in two pairs, which is how it is usually played.
-- Scopa for four, and Scopone, which is the same game with the whole deck dealt.
-- Scopa's optional points: the napola, and the re bello.
-- Tressette for four in two pairs, where the signals between partners are the
-  whole game; and declaring a combination drawn from the stock, rather than
-  only from the hand as it is dealt.
-- A cap on how far a long row of melds may spread down the table.
-- Best-of-three Briscola with a running aggregate score.
+- Four-player Burraco and Tressette in two pairs, using the existing seating
+  and team-score foundation.
+- Scopone: Scopa for four, with the whole deck dealt at the start.
+- Briscola chiamata or Briscola for four, adding partners and a bidding phase.
+- A short **Best-of-three Briscola** mode with an aggregate score.
+- Poker tournaments, more than two players, or fixed-limit betting.
+- Optional Scopa variants such as napola and re bello.
+- Tressette signals and declarations from cards drawn during the deal.
 - A leaderboard across players in the statistics window.

@@ -15,6 +15,7 @@ TESTS = (
     "test_engine.py",
     "test_features.py",
     "test_layout.py",
+    "test_poker.py",
     "test_records.py",
     "test_scopa.py",
     "test_tressette.py",

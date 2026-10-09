@@ -10,7 +10,7 @@ from cardgames import catalog, ui
 
 def test_every_game_has_complete_menu_metadata():
     assert set(catalog.GAMES) == {
-        ui.BRISCOLA, ui.BURRACO, ui.SCOPA, ui.TRESSETTE
+        ui.BRISCOLA, ui.BURRACO, ui.SCOPA, ui.TRESSETTE, ui.POKER
     }
     for kind, spec in catalog.GAMES.items():
         assert spec.key == kind
@@ -26,6 +26,8 @@ def test_only_series_games_offer_targets():
     assert catalog.spec_for(ui.BURRACO).targets
     assert catalog.spec_for(ui.SCOPA).targets
     assert catalog.spec_for(ui.TRESSETTE).targets
+    assert catalog.spec_for(ui.POKER).targets
+    assert catalog.spec_for(ui.POKER).default_target in catalog.spec_for(ui.POKER).targets
 
 
 def test_unknown_game_is_rejected_early():

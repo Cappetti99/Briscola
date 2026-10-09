@@ -11,6 +11,8 @@ from .briscola import ai as briscola_ai
 from .burraco import ai as burraco_ai
 from .burraco import engine as burraco_engine
 from .burraco import view as burraco_view
+from .poker import ai as poker_ai
+from .poker import engine as poker_engine
 from .scopa import ai as scopa_ai
 from .scopa import engine as scopa_engine
 from .tressette import ai as tressette_ai
@@ -92,6 +94,24 @@ SCOPA_RULES = (
     "Controls: click a card to play it, or press 1 / 2 / 3. When more\n"
     "than one take is legal, click the table cards you want first.")
 
+POKER_RULES = (
+    "Two cards face down for each of you, five in the middle, and four\n"
+    "rounds of betting. The best five cards out of seven take the pot.\n\n"
+    "Heads-up, the button posts the small blind and acts first before\n"
+    "the flop; the big blind acts first after it. Each hand starts with\n"
+    "100 chips each, and the stacks it finishes with are its score.\n\n"
+    "Fold, check, call, bet or raise. A bet has to be matched before\n"
+    "the cards go on, and a raise has to be answered again. All in\n"
+    "puts everything in at once, and the rest of the board is dealt\n"
+    "out with no more betting.\n\n"
+    "Order: straight flush, four of a kind, full house, flush,\n"
+    "straight, three of a kind, two pair, pair, high card. The ace is\n"
+    "high, and low only in A-2-3-4-5. A split pot sends the odd chip\n"
+    "to the player left of the button.\n\n"
+    "Full rules: https://en.wikipedia.org/wiki/Texas_hold_%27em\n\n"
+    "Controls: 1 fold, 2 check or call, 3 raise, 4 raise by the pot,\n"
+    "5 all in. Every action is also a button in the panel.")
+
 
 def _spec(key, play_keys, levels, labels, blurbs, targets, default, rules):
     return GameSpec(key, play_keys, tuple(levels), labels, blurbs,
@@ -129,6 +149,13 @@ GAMES = {
             tressette_ai.NORMAL: "Knows which card commands a suit, and spends nothing.",
             tressette_ai.HARD: "Deals out the cards it cannot see and plays them out.",
         }, tressette_engine.TARGETS, tressette_engine.DEFAULT_TARGET, TRESSETTE_RULES),
+    ui.POKER: _spec(
+        ui.POKER, "12345", poker_ai.LEVELS, poker_ai.LEVEL_LABELS,
+        {
+            poker_ai.EASY: "Bets its own two cards and little else. A gentle start.",
+            poker_ai.NORMAL: "Plays the price: its hand against what the pot asks.",
+            poker_ai.HARD: "Counts its outs by sampling the cards it cannot see.",
+        }, poker_engine.TARGETS, poker_engine.DEFAULT_TARGET, POKER_RULES),
 }
 
 

@@ -1223,6 +1223,149 @@ def test_changing_game_mid_play_falls_back_to_the_menu():
         assert app.game_kind == ui.BURRACO
 
 
+# --- Poker ----------------------------------------------------------------
+
+def poker_app(app):
+    """Start a hand of poker and wait until it is the player's move."""
+    from cardgames import ui
+
+    app.set_game(ui.POKER)
+    app.target = 0                     # one hand is the whole match
+    app.start_game()
+    for _ in range(400):
+        if app.state == gui.S_HUMAN:
+            app.canvas.event_generate("<Motion>", x=1, y=1)
+            app.update()
+            return
+        app.update()
+        time.sleep(0.005)
+    raise AssertionError("the hand never came round to the player")
+
+
+def test_starting_poker_deals_the_hole_cards_and_the_blinds():
+    from cardgames.poker import engine as poker_engine
+
+    with app_with_records(start=False) as (app, _store, _tmp):
+        poker_app(app)
+        game = app.game
+        assert [len(hand) for hand in game.hands] == [2, 2]
+        assert sum(game.committed) == (poker_engine.SMALL_BLIND
+                                       + poker_engine.BIG_BLIND)
+        assert game.dealer == poker_engine.HUMAN
+        assert len(game.stock) == 48
+        # The panel answers with the five things a hand of poker can do.
+        for key in ("poker_fold", "poker_call", "poker_raise", "poker_pot",
+                    "poker_allin"):
+            assert key in app._buttons, key
+
+
+def test_the_fold_button_ends_the_hand_and_files_the_match():
+    with app_with_records(start=False) as (app, store, _tmp):
+        poker_app(app)
+        _rect, fold = app._buttons["poker_fold"]
+        fold()
+        app.update()
+        assert app.game.game_over
+        assert not app.game.showdown, "a fold shows nobody's cards"
+        # The pause runs, the scores come up, and the match is filed once.
+        assert wait_for(app, lambda: app.overlay is not None)
+        matches = store.matches("tester")
+        assert len(matches) == 1, matches
+        assert matches[0].game == "poker"
+
+
+def test_a_whole_hand_of_poker_runs_down_to_a_showdown():
+    class Key:
+        def __init__(self, char):
+            self.char = char
+
+    with app_with_records(start=False) as (app, store, _tmp):
+        poker_app(app)
+        # Check or call all the way down — never refused, never a fold —
+        # so the hand runs to the showdown the window then shows off.
+        for _ in range(3000):
+            app.update()
+            if app.state == gui.S_OVER:
+                break
+            if app.state == gui.S_HUMAN:
+                app._on_key(Key("2"))
+            time.sleep(0.002)
+        assert app.state == gui.S_OVER, "the hand never finished"
+        assert app.game.showdown and len(app.game.table) == 5
+        assert sum(app.game.stacks) == 200
+        assert app.overlay is not None
+        matches = store.matches("tester")
+        assert len(matches) == 1 and matches[0].game == "poker"
+        # The stacks the hand finished with are what was filed.
+        assert sorted((matches[0].you, matches[0].ai)) == sorted(app.game.scores())
+
+
+def test_no_label_lands_half_way_across_a_poker_card():
+    """A card face carries its own labels; nothing else may straddle one.
+
+    The rows and the labels between them are planned in layout.py, but
+    what actually lands on the canvas depends on fonts — so here is the
+    rendered table, mid-hand with a bet to answer, checked for any text
+    that starts on a card and finishes off it.
+    """
+    from cardgames.poker import engine as poker_engine
+    from cardgames.poker import layout as poker
+
+    with app_with_records(start=False) as (app, _store, _tmp):
+        poker_app(app)
+        game = app.game
+        for line in (game.act(poker_engine.HUMAN, "raise", 6),
+                     game.act(poker_engine.AI, "call"),
+                     game.act(poker_engine.AI, "bet", 4)):
+            app.note(line)
+        app.poker_advance()
+        app.update()
+        assert app.state == gui.S_HUMAN
+        slots = [(poker.hole_x(index), poker.HOLE_YOU_Y,
+                  poker.HOLE_W, poker.HOLE_H) for index in range(2)]
+        slots += [(poker.board_x(index), poker.BOARD_Y,
+                   poker.BOARD_W, poker.BOARD_H)
+                  for index in range(poker.BOARD_SLOTS)]
+        straddlers = []
+        for item in app.canvas.find_all():
+            if app.canvas.type(item) != "text":
+                continue
+            x1, y1, x2, y2 = app.canvas.bbox(item)
+            for sx, sy, sw, sh in slots:
+                inside = (x1 >= sx and y1 >= sy
+                          and x2 <= sx + sw and y2 <= sy + sh)
+                crosses = (x1 < sx + sw and sx < x2
+                           and y1 < sy + sh and sy < y2)
+                if crosses and not inside:
+                    straddlers.append(app.canvas.itemcget(item, "text"))
+        assert not straddlers, straddlers
+
+
+def test_a_poker_match_carries_on_and_flips_the_button():
+    from cardgames import ui
+
+    with app_with_records(start=False) as (app, store, _tmp):
+        app.set_game(ui.POKER)
+        app.target = 200
+        app.start_game()
+        assert wait_for(app, lambda: app.state == gui.S_HUMAN)
+        first_dealer = app.game.dealer
+        _rect, fold = app._buttons["poker_fold"]
+        fold()
+        # One hand is not a match of 200, so the window asks what next and
+        # files nothing yet.
+        assert wait_for(app, lambda: app.overlay is not None)
+        assert app.overlay[0] == "Hand over", app.overlay[0]
+        assert not store.matches("tester"), "an unfinished match was filed"
+        _rect, next_hand = app._buttons["overlay_0"]
+        next_hand()
+        app.update()
+        assert app.game.dealer != first_dealer, "the button has to alternate"
+        assert app.match.totals != [0, 0] or app.match.hands == 1
+        assert app.match.hands == 1
+        assert not store.matches("tester")
+
+
 # --- faults found by hand, and kept out --------------------------------------
 
 def test_a_key_with_no_character_does_nothing():

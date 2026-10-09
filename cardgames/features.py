@@ -1,4 +1,4 @@
-"""Session, preferences and training controls shared by all four games."""
+"""Session, preferences and training controls shared by every game."""
 import copy
 import queue
 import threading
@@ -144,6 +144,8 @@ class AppFeatures:
             self._advance()
         elif self.game_kind == 'tressette':
             self.tressette_advance()
+        elif self.game_kind == 'poker':
+            self.poker_advance()
         else:
             self.after_move()
 

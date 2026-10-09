@@ -8,15 +8,17 @@ from .cards import Card, new_deck, burraco_deck
 from .match import Match
 from .briscola import engine as briscola
 from .burraco import engine as burraco
+from .poker import engine as poker
 from .scopa import engine as scopa
 from .tressette import engine as tressette
 
 TYPES = {f'{cls.__module__}.{cls.__name__}': cls for cls in (
     Card, Match, briscola.Game, briscola.TrickResult, burraco.Game,
-    burraco.Meld, burraco.Turn, scopa.Game, scopa.Play,
+    burraco.Meld, burraco.Turn, poker.Game, scopa.Game, scopa.Play,
     tressette.Game, tressette.TrickResult, tressette.Declaration)}
 ENGINES = {'briscola': briscola.Game, 'burraco': burraco.Game,
-           'scopa': scopa.Game, 'tressette': tressette.Game}
+           'poker': poker.Game, 'scopa': scopa.Game,
+           'tressette': tressette.Game}
 VERSION = 2
 
 
@@ -116,6 +118,11 @@ class SessionStore:
                 physical += game.discards + [card for pot in game.pots for card in pot]
                 physical += [card for side in game.melds for meld in side for card in meld.cards]
                 deck = burraco_deck()
+            elif state['game_kind'] == 'poker':
+                # The board and the muck: a folded hand keeps its cards, and
+                # the deck behind them is a plain 52.
+                physical += list(game.table) + list(game.mucked)
+                deck = poker.poker_deck()
             else:
                 physical += [card for pile in game.captured for card in pile]
                 physical += (list(game.table) if state['game_kind'] == 'scopa'

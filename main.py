@@ -1,4 +1,4 @@
-"""Entry point: opens the menu, from which any of the four games is dealt."""
+"""Entry point: opens the menu, from which any of the five games is dealt."""
 
 from cardgames.app import main
 

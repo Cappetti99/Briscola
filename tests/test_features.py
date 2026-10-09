@@ -1,6 +1,7 @@
 """Regression checks for saves, filters, preferences and fair training hints."""
 import copy
 import json
+import random
 import sys
 import tempfile
 from pathlib import Path
@@ -37,6 +38,14 @@ def test_roundtrip_all_games_with_noninitial_state():
             elif kind == 'scopa':
                 for _ in range(7):
                     scopa_ai.take_turn(game, game.turn, 'normal')
+            elif kind == 'poker':
+                from cardgames.poker import ai as poker_ai
+                for turn in range(30):
+                    if game.game_over:
+                        break
+                    action, amount = poker_ai.choose_action(
+                        game, game.turn, 'normal', random.Random(turn))
+                    game.act(game.turn, action, amount)
             else:
                 from cardgames.burraco import ai
                 for _ in range(4):
@@ -52,7 +61,12 @@ def test_roundtrip_all_games_with_noninitial_state():
                 resumed.discard(resumed.turn, resumed.hands[resumed.turn][0])
             elif kind == 'scopa':
                 scopa_ai.take_turn(resumed, resumed.turn, 'normal')
-            else:
+            elif kind == 'poker' and not resumed.game_over:
+                from cardgames.poker import ai as poker_ai
+                action, amount = poker_ai.choose_action(
+                    resumed, resumed.turn, 'normal', random.Random(0))
+                resumed.act(resumed.turn, action, amount)
+            elif kind != 'poker':
                 index = resumed.legal_cards(resumed.turn)[0] if kind == 'tressette' else 0
                 resumed.play_card(resumed.turn, index)
 
