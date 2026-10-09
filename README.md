@@ -451,12 +451,16 @@ rounds of betting around them — preflop, flop, turn and river. Full rules:
 Normal works from what it is entitled to see: its own two cards, the board,
 the pot and the price of the next card — never the opponent's hand or the
 deck, which is also what makes it safe to offer as the training hint. The
-expert deals the unseen cards out again and again, counts how often each of
-them wins out to the river, and plays the price against that equity: value
-hands raise for it, draws semi-bluff at the right price, and a call has to
-out-earn what it costs. Like the other searches it runs on the worker
-thread; see the timing sample under [Pacing and
-performance](#pacing-and-performance).
+The Expert samples unseen cards to estimate showdown equity. When facing a
+bet, it weights possible opponent hands towards stronger holdings, then
+compares fold, call and raise by their estimated chip value, including the
+chance a raise gets called or makes the opponent fold. On the river it
+enumerates every possible opponent holding. Its response model follows the
+Normal opponent's call threshold, and estimates the raiser's equity only
+against hands that would call. The evaluator ranks five to seven cards
+directly instead of checking every five-card subset. Like the other searches
+it runs on the worker thread; see the timing sample under
+[Pacing and performance](#pacing-and-performance).
 
 ## The cards
 
@@ -543,9 +547,18 @@ These are search times, not UI stalls or guarantees for every game position.
 To compare Poker's Easy, Normal and Expert levels over position-balanced
 matches, run `python tools/benchmark_poker_strength.py`. By default it plays
 200 hands per matchup and limits Expert sampling to 20 ms per decision so the
-comparison completes quickly; use `--hands` and `--expert-budget` to change
-the sample size and search time. The report includes win counts, average
-stacks, chip share and an approximate 95% interval for the chip margin.
+comparison completes quickly; use `--hands`, `--expert-budget` and
+`--matchup` to set the sample size, search time and pair of levels. For
+example, compare Normal and Expert at 20, 100 and 450 ms with:
+
+```bash
+for budget in 0.02 0.1 0.45; do
+  python tools/benchmark_poker_strength.py --matchup normal-expert --hands 100 --expert-budget "$budget"
+done
+```
+
+The report includes win counts, average stacks, chip share and a paired 95%
+interval for the chip margin.
 
 Idle — on the menu or waiting for your card — the process measures **0.2% CPU
 and about 78 MB resident**. If the interface ever misbehaves, run it with

@@ -9,6 +9,8 @@ import copy
 import random
 import sys
 import time
+from collections import Counter
+from itertools import combinations
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -27,6 +29,44 @@ def cards_in(game):
     return (list(game.stock)
             + [card for hand in game.hands for card in hand]
             + list(game.table) + list(game.mucked))
+
+
+def reference_hand(cards):
+    """Slow combination evaluator retained as an oracle for the fast one."""
+    def five(hand):
+        values = sorted((14 if card.rank == ACE else card.rank
+                         for card in hand), reverse=True)
+        flush = len({card.suit for card in hand}) == 1
+        unique = sorted(set(values), reverse=True)
+        straight = 0
+        if len(unique) == 5:
+            if unique[0] - unique[-1] == 4:
+                straight = unique[0]
+            elif unique == [14, 5, 4, 3, 2]:
+                straight = 5
+        groups = sorted(Counter(values).items(),
+                        key=lambda item: (item[1], item[0]), reverse=True)
+        shape = tuple(count for _rank, count in groups)
+        ordered = tuple(rank for rank, _count in groups)
+        if flush and straight:
+            return poker.STRAIGHT_FLUSH, straight
+        if shape == (4, 1):
+            return poker.FOUR, *ordered
+        if shape == (3, 2):
+            return poker.FULL_HOUSE, *ordered
+        if flush:
+            return poker.FLUSH, *values
+        if straight:
+            return poker.STRAIGHT, straight
+        if shape == (3, 1, 1):
+            return poker.THREE, *ordered
+        if shape == (2, 2, 1):
+            return poker.TWO_PAIR, *ordered
+        if shape == (2, 1, 1, 1):
+            return poker.PAIR, *ordered
+        return poker.HIGH_CARD, *values
+
+    return max(five(hand) for hand in combinations(cards, 5))
 
 
 def play_out(game, rng, limit=80):
@@ -236,6 +276,23 @@ def test_seven_cards_find_the_best_five_inside_them():
             == poker.best_hand(royal))
 
 
+def test_direct_hand_evaluator_matches_the_combination_oracle():
+    rng = random.Random(7401)
+    deck = poker.poker_deck()
+    for size in (5, 6, 7):
+        for _ in range(120):
+            hand = rng.sample(deck, size)
+            assert poker.best_hand(hand) == reference_hand(hand), hand
+
+
+def test_river_equity_enumerates_every_opponent_holding():
+    game = poker.Game(seed=18)
+    game.table = [C(9, "Clubs"), C(10, "Clubs"), C(JACK, "Clubs"),
+                  C(QUEEN, "Clubs"), C(KING, "Clubs")]
+    game.hands[poker.HUMAN] = [C(ACE, "Clubs"), C(2, "Diamonds")]
+    assert poker_ai.equity(game, poker.HUMAN, random.Random(9)) == 1.0
+
+
 def test_kickers_break_a_tie_that_the_pair_cannot():
     pair_of_nines_ace = [C(9, "Spades"), C(9, "Hearts"), C(ACE, "Clubs"),
                          C(7, "Diamonds"), C(3, "Spades")]
@@ -318,6 +375,45 @@ def test_the_expert_counts_its_outs():
     game.hands[poker.AI] = [C(4, "Clubs"), C(9, "Diamonds")]
     broken = poker_ai.equity(game, poker.AI, random.Random(3))
     assert broken < draw, (broken, draw)
+
+
+def test_expert_conditions_a_faced_bet_on_stronger_opponent_hands():
+    game = poker.Game(seed=31)
+    game.phase = "flop"
+    game.table = [C(2, "Clubs"), C(7, "Diamonds"), C(JACK, "Hearts")]
+    game.hands[poker.HUMAN] = [C(ACE, "Spades"), C(8, "Spades")]
+    game.turn = poker.HUMAN
+    game.committed = [0, 0]
+    game.total = [100, 100]
+    game.acted = [False, False]
+    random_range = poker_ai._equity_estimate(
+        game, poker.HUMAN, random.Random(381), 0.1)
+
+    game.committed = [0, 10]
+    game.total = [100, 110]
+    game.acted = [False, True]
+    betting_range = poker_ai._equity_estimate(
+        game, poker.HUMAN, random.Random(381), 0.1)
+    assert betting_range[1] > random_range[1]
+
+
+def test_raise_value_uses_equity_against_the_calling_range():
+    game = poker.Game(seed=32, first_player=poker.HUMAN)
+    # A weak hand folds; the strong hand calls and beats us. Average equity
+    # across both hands would make this minimum raise look profitable.
+    scenarios = ((0.10, 1.0, 1.0), (0.90, 1.0, 0.0))
+    value = poker_ai._raise_ev(game, poker.HUMAN, 6, scenarios)
+    assert value == -1.0
+
+
+def test_an_all_in_opponent_cannot_be_raised():
+    game = poker.Game(seed=44)
+    game.stacks = [90, 0]
+    game.committed = [10, 100]
+    game.total = [10, 100]
+    game.all_in = [False, True]
+    game.turn = poker.HUMAN
+    assert game.legal_actions(poker.HUMAN) == ("fold", "call")
 
 
 def test_the_expert_folds_junk_and_never_folds_the_nuts():

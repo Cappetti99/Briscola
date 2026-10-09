@@ -19,7 +19,6 @@ window records it beside the other games.
 
 import random
 from collections import Counter
-from itertools import combinations
 
 from ..cards import ACE, RANK_NAMES, Card, french_deck
 from ..match import Match           # noqa: F401  (re-exported for the window)
@@ -75,55 +74,80 @@ def _plural(rank: int) -> str:
     return "sixes" if rank == 6 else _name(rank) + "s"
 
 
-def _five(cards: list[Card]) -> tuple[int, ...]:
-    """Exactly five cards: a category, then whatever breaks a tie."""
-    values = sorted((_value(card.rank) for card in cards), reverse=True)
-    flush = all(card.suit == cards[0].suit for card in cards)
-    unique = sorted(set(values), reverse=True)
-
-    straight_high = 0
-    if len(unique) == 5:
-        if unique[0] - unique[4] == 4:
-            straight_high = unique[0]
-        elif unique == [14, 5, 4, 3, 2]:
-            straight_high = 5      # the wheel: the ace plays low only here
-
-    groups = sorted(Counter(values).items(),
-                    key=lambda pair: (pair[1], pair[0]), reverse=True)
-    shape = tuple(count for _rank, count in groups)
-    ordered = tuple(rank for rank, _count in groups)
-
-    if flush and straight_high:
-        return (STRAIGHT_FLUSH, straight_high)
-    if shape == (4, 1):
-        return (FOUR, *ordered)
-    if shape == (3, 2):
-        return (FULL_HOUSE, *ordered)
-    if flush:
-        return (FLUSH, *values)
-    if straight_high:
-        return (STRAIGHT, straight_high)
-    if shape == (3, 1, 1):
-        return (THREE, *ordered)
-    if shape == (2, 2, 1):
-        return (TWO_PAIR, *ordered)
-    if shape == (2, 1, 1, 1):
-        return (PAIR, *ordered)
-    return (HIGH_CARD, *values)
+def _straight_high(ranks) -> int:
+    """Return the top rank of a straight, with ace low only for the wheel."""
+    mask = sum(1 << rank for rank in ranks)
+    if 14 in ranks:
+        mask |= 1 << 1
+    for high in range(14, 4, -1):
+        run = 0b11111 << (high - 4)
+        if mask & run == run:
+            return high
+    return 0
 
 
 def best_hand(cards) -> tuple[int, ...]:
-    """The best five cards inside five, six or seven of them.
+    """Evaluate five to seven cards directly, without enumerating 5-card sets.
 
-    Comparable with `>`: the category leads, and everything after it is the
-    kickers in the order a reader would name them.
+    The returned tuple compares lexicographically: category first, followed
+    by its kickers. Rank and suit counts find the best five without building
+    and evaluating every five-card combination.
     """
     cards = list(cards)
     if len(cards) < 5:
         raise ValueError("a poker hand needs five cards")
-    if len(cards) == 5:
-        return _five(cards)
-    return max(_five(combo) for combo in combinations(cards, 5))
+    if len(cards) > 7:
+        raise ValueError("a poker hand can contain at most seven cards")
+
+    values = [_value(card.rank) for card in cards]
+    counts = Counter(values)
+    grouped = sorted(counts, key=lambda rank: (counts[rank], rank), reverse=True)
+    suits = {}
+    for card, rank in zip(cards, values):
+        suits.setdefault(card.suit, []).append(rank)
+
+    straight_flushes = [_straight_high(ranks) for ranks in suits.values()
+                        if len(ranks) >= 5]
+    straight_flush = max(straight_flushes, default=0)
+    if straight_flush:
+        return STRAIGHT_FLUSH, straight_flush
+
+    quads = [rank for rank in grouped if counts[rank] == 4]
+    if quads:
+        quad = max(quads)
+        kicker = max(rank for rank in counts if rank != quad)
+        return FOUR, quad, kicker
+
+    trips = sorted((rank for rank in counts if counts[rank] >= 3), reverse=True)
+    pairs = sorted((rank for rank in counts if counts[rank] >= 2), reverse=True)
+    if trips:
+        trip = trips[0]
+        pair = next((rank for rank in pairs if rank != trip), None)
+        if pair is not None:
+            return FULL_HOUSE, trip, pair
+
+    flushes = [sorted(ranks, reverse=True)[:5] for ranks in suits.values()
+               if len(ranks) >= 5]
+    if flushes:
+        return FLUSH, *max(flushes)
+
+    straight = _straight_high(counts)
+    if straight:
+        return STRAIGHT, straight
+    if trips:
+        trip = trips[0]
+        kickers = sorted((rank for rank in counts if rank != trip), reverse=True)[:2]
+        return THREE, trip, *kickers
+    if len(pairs) >= 2:
+        high_pair, low_pair = pairs[:2]
+        kicker = max(rank for rank in counts
+                     if rank != high_pair and rank != low_pair)
+        return TWO_PAIR, high_pair, low_pair, kicker
+    if pairs:
+        pair = pairs[0]
+        kickers = sorted((rank for rank in counts if rank != pair), reverse=True)[:3]
+        return PAIR, pair, *kickers
+    return HIGH_CARD, *sorted(counts, reverse=True)[:5]
 
 
 def describe(cards) -> str:
@@ -232,7 +256,8 @@ class Game:
             return ()
         if self.to_call(player) > 0:
             actions = ["fold", "call"]
-            if self.stacks[player] > self.to_call(player):
+            if (self.stacks[player] > self.to_call(player)
+                    and not self.all_in[1 - player]):
                 actions.append("raise")
             return tuple(actions)
         actions = ["check"]

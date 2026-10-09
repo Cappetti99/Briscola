@@ -7,6 +7,7 @@ more accurate Expert decisions, or ``--hands`` for a larger comparison.
 """
 
 import argparse
+import math
 import random
 import statistics
 import sys
@@ -18,50 +19,44 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from cardgames.poker import ai, engine
 
 
-LEVELS = (ai.EASY, ai.NORMAL, ai.HARD)
+MATCHUPS = {
+    'easy-normal': (ai.EASY, ai.NORMAL),
+    'easy-expert': (ai.EASY, ai.HARD),
+    'normal-expert': (ai.NORMAL, ai.HARD),
+}
 
 
-def play_hand(seed, first_player, levels, rng, expert_budget):
+def play_hand(seed: int, first_player: int, levels: list[str],
+              rng: random.Random, expert_budget: float) -> list[int]:
     game = engine.Game(seed=seed, first_player=first_player)
-    original_equity = ai.equity
-
-    def bounded_equity(state, player, decision_rng=None, budget=ai.TIME_BUDGET):
-        return original_equity(
-            state, player, decision_rng,
-            budget=min(budget, expert_budget),
-        )
-
-    ai.equity = bounded_equity
-    try:
-        for _ in range(100):
-            if game.game_over:
-                break
-            player = game.turn
-            ai.take_turn(game, player, levels[player], rng)
-        if not game.game_over:
-            raise RuntimeError(f"hand did not finish (seed={seed})")
-    finally:
-        ai.equity = original_equity
+    for _ in range(100):
+        if game.game_over:
+            break
+        player = game.turn
+        ai.take_turn(game, player, levels[player], rng,
+                     expert_budget=expert_budget)
+    if not game.game_over:
+        raise RuntimeError(f"hand did not finish (seed={seed})")
     return game.stacks
 
 
-def compare(level_a, level_b, hands, expert_budget, base_seed):
-    outcomes = []
-    chip_deltas = []
+def compare(level_a: str, level_b: str, hands: int, expert_budget: float,
+            base_seed: int) -> None:
+    paired_chip_deltas = []
     chips_a = 0
     chips_b = 0
     a_wins = b_wins = ties = 0
 
     for index in range(hands):
         seed = base_seed + index
+        paired_delta = 0
         # Play the same shuffled deal with the level assignments swapped.
         # The button alternates between the paired hands as an additional
         # balance against first-to-act advantage.
         for swap in (False, True):
             a_player = (index + int(swap)) % 2
-            assignment = [None, None]
+            assignment = [level_b, level_b]
             assignment[a_player] = level_a
-            assignment[1 - a_player] = level_b
             button = (index + int(swap)) % 2
             rng = random.Random(seed * 2 + int(swap) + 100_000)
             stacks = play_hand(seed, button, assignment, rng, expert_budget)
@@ -70,23 +65,26 @@ def compare(level_a, level_b, hands, expert_budget, base_seed):
             delta = a_stack - b_stack
             chips_a += a_stack
             chips_b += b_stack
-            chip_deltas.append(delta)
+            paired_delta += delta
             if delta > 0:
                 a_wins += 1
             elif delta < 0:
                 b_wins += 1
             else:
                 ties += 1
-            outcomes.append(delta)
+        # The two mirrored hands share the same shuffled deal. Treat their
+        # average as one independent observation when estimating uncertainty.
+        paired_chip_deltas.append(paired_delta / 2)
 
-    total = len(outcomes)
+    total = hands * 2
     score_share = chips_a / (chips_a + chips_b) * 100
-    mean_delta = statistics.mean(chip_deltas)
-    sd = statistics.stdev(chip_deltas) if total > 1 else 0.0
-    margin = 1.96 * sd / total ** 0.5
+    mean_delta = statistics.mean(paired_chip_deltas)
+    sd = (statistics.stdev(paired_chip_deltas)
+          if len(paired_chip_deltas) > 1 else 0.0)
+    margin = 1.96 * sd / len(paired_chip_deltas) ** 0.5
     print(
         f"{ai.LEVEL_LABELS[level_a]:6} vs {ai.LEVEL_LABELS[level_b]:6} | "
-        f"{a_wins:3}-{b_wins:3}-{ties:3} wins/ties | "
+        f"A/B/tie {a_wins:3}/{b_wins:3}/{ties:3} | "
         f"stack {chips_a / total:.1f}-{chips_b / total:.1f} | "
         f"score share {score_share:.1f}% | "
         f"mean chip margin {mean_delta:+.1f} "
@@ -100,19 +98,22 @@ def main():
                         help='paired deals per matchup (default: 100)')
     parser.add_argument('--expert-budget', type=float, default=0.02,
                         help='seconds per Expert equity decision (default: 0.02)')
+    parser.add_argument('--matchup', choices=(*MATCHUPS, 'all'), default='all',
+                        help='which pair to compare (default: all)')
     parser.add_argument('--seed', type=int, default=20261006,
                         help='first deterministic deal seed')
     args = parser.parse_args()
     if args.hands < 1:
         parser.error('--hands must be positive')
-    if args.expert_budget <= 0:
-        parser.error('--expert-budget must be positive')
+    if not math.isfinite(args.expert_budget) or args.expert_budget <= 0:
+        parser.error('--expert-budget must be finite and positive')
 
     print(f"{args.hands * 2} hands per matchup; Expert budget "
           f"{args.expert_budget * 1000:.0f} ms per decision")
     started = time.perf_counter()
-    for first, second in ((ai.EASY, ai.NORMAL), (ai.EASY, ai.HARD),
-                          (ai.NORMAL, ai.HARD)):
+    matchups = MATCHUPS.items() if args.matchup == 'all' else (
+        (args.matchup, MATCHUPS[args.matchup]),)
+    for _name, (first, second) in matchups:
         compare(first, second, args.hands, args.expert_budget, args.seed)
     print(f"Elapsed: {time.perf_counter() - started:.1f} s")
 
